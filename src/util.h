@@ -17,6 +17,10 @@ struct Triangle {
     glm::vec3 p2;
     glm::vec3 p3;
 };
+struct ISize {
+    uint32_t width;
+    uint32_t height;
+};
 
 struct Texture2D {
     Texture2D(){}
@@ -35,6 +39,7 @@ struct Texture2D {
     void* data = nullptr;
     DataType type;
 };
+
 
 struct Vertex {
     glm::vec3 pos;
@@ -121,8 +126,12 @@ void DestroyTexture2D(Texture2D* tex);
 GLuint LoadProgram(const char* vs, const char* fs);
 GLuint LoadProgramFromFile(const char* vs, const char* fs);
 
+void DrawHDR(const Texture2D& tex, const glm::mat4& view_matrix);
+
 void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds);
 void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const glm::vec3& size, const glm::vec4 col[8]);
+
+ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds);
 
 
 

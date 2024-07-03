@@ -2,6 +2,8 @@
 #include <glm/glm.hpp>
 
 
+bool IsPointInTriangle(const glm::vec2& pt, const glm::vec2& t1, const glm::vec2& t2, const glm::vec2& t3);
+
 float CalcTriangleArea(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& p3);
 
 float AngleBetweenVectors(const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& reference_up);

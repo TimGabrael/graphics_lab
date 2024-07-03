@@ -3,6 +3,18 @@
 #include <random>
 #include <corecrt_math_defines.h>
 
+static float sign(const glm::vec2& p1, const glm::vec2& p2, const glm::vec2& p3) {
+    return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+}
+
+bool IsPointInTriangle(const glm::vec2& pt, const glm::vec2& t1, const glm::vec2& t2, const glm::vec2& t3) {
+    float d1 = sign(pt, t1, t2);
+    float d2 = sign(pt, t2, t3);
+    float d3 = sign(pt, t3, t1);
+    bool has_neg = (d1 < 0.0f) || (d2 < 0.0f) || (d3 < 0.0f);
+    bool has_pos = (d1 > 0.0f) || (d2 > 0.0f) || (d3 > 0.0f);
+    return !(has_neg && has_pos);
+}
 
 float CalcTriangleArea(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& p3) {
     const glm::vec3 v12 = p2 - p1;

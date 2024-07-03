@@ -8,6 +8,7 @@
 #define TINYGLTF_NOEXCEPTION
 #define JSON_NOEXCEPTION
 #include "tiny_gltf.h"
+#include "xatlas.h"
 #undef min
 #undef max
 
@@ -310,7 +311,7 @@ Texture2D CreateTexture2D(const glm::vec4* data, uint32_t width, uint32_t height
     tex.width = width;
     tex.height = height;
     tex.num_channels = 4;
-    memcpy(tex.data, data, width * height * sizeof(uint32_t));
+    memcpy(tex.data, data, width * height * sizeof(*data));
 
     glGenTextures(1, &tex.id);
     glBindTexture(GL_TEXTURE_2D, tex.id);
@@ -408,6 +409,47 @@ GLuint LoadProgramFromFile(const char* vs, const char* fs) {
     return LoadProgram(vs_source.c_str(), fs_source.c_str());
 }
 
+void DrawHDR(const Texture2D& tex, const glm::mat4& view_matrix) {
+    static GLuint hdr_program = INVALID_GL_HANDLE;
+    static GLuint hdr_vao = INVALID_GL_HANDLE;
+    static GLuint hdr_vbo = INVALID_GL_HANDLE;
+    static GLuint hdr_mat_loc = INVALID_GL_HANDLE;
+
+    if(hdr_program == INVALID_GL_HANDLE) {
+        hdr_program = LoadProgramFromFile("../assets/shaders/environment.vs", "../assets/shaders/environment.fs");
+
+        static glm::vec2 positions[] = {
+            {-1.0f,  1.0f},
+            {-1.0f, -1.0f},
+            { 1.0f, -1.0f},
+            {-1.0f,  1.0f},
+            { 1.0f, -1.0f},
+            { 1.0f,  1.0f},
+        };
+
+
+        glCreateVertexArrays(1, &hdr_vao);
+        glBindVertexArray(hdr_vao);
+        glGenBuffers(1, &hdr_vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, hdr_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * ARRSIZE(positions), positions, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
+        hdr_mat_loc = glGetUniformLocation(hdr_program, "invViewMatrix");
+    }
+
+    glUseProgram(hdr_program);
+    glBindVertexArray(hdr_vao);
+    const glm::mat4 inv_view_mat = glm::inverse(view_matrix);
+    glUniformMatrix4fv(hdr_mat_loc, 1, GL_FALSE, (const float*)&inv_view_mat);
+
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glBindVertexArray(0);
+}
+
 void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds) {
     const std::vector<Vertex> vertices = {
         {glm::vec3(-0.5f, -0.5f,  0.5f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(0.0f, 0.0f), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)},
@@ -492,9 +534,6 @@ void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const
         const uint32_t idx_1 = indices.at(3 * i + 0);
         const uint32_t idx_2 = indices.at(3 * i + 1);
         const uint32_t idx_3 = indices.at(3 * i + 2);
-
-
-
     }
     verts.reserve(verts.size() + vertices.size());
     inds.reserve(inds.size() + indices.size());
@@ -504,4 +543,184 @@ void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const
     for(uint32_t i : indices) {
         inds.push_back(i);
     }
+}
+
+
+static void SetPixel(uint8_t *dest, int destWidth, int x, int y, const uint8_t *color)
+{
+    uint8_t *pixel = &dest[x * 3 + y * (destWidth * 3)];
+    pixel[0] = color[0];
+    pixel[1] = color[1];
+    pixel[2] = color[2];
+}
+static void RandomColor(uint8_t *color)
+{
+	for (int i = 0; i < 3; i++)
+		color[i] = uint8_t((rand() % 255 + 192) * 0.5f);
+}
+
+// https://github.com/miloyip/line/blob/master/line_bresenham.c
+// License: public domain.
+static void RasterizeLine(uint8_t *dest, int destWidth, const int *p1, const int *p2, const uint8_t *color)
+{
+	const int dx = abs(p2[0] - p1[0]), sx = p1[0] < p2[0] ? 1 : -1;
+	const int dy = abs(p2[1] - p1[1]), sy = p1[1] < p2[1] ? 1 : -1;
+	int err = (dx > dy ? dx : -dy) / 2;
+	int current[2];
+	current[0] = p1[0];
+	current[1] = p1[1];
+	while (SetPixel(dest, destWidth, current[0], current[1], color), current[0] != p2[0] || current[1] != p2[1])
+	{
+		const int e2 = err;
+		if (e2 > -dx) { err -= dy; current[0] += sx; }
+		if (e2 < dy) { err += dx; current[1] += sy; }
+	}
+}
+
+/*
+https://github.com/ssloy/tinyrenderer/wiki/Lesson-2:-Triangle-rasterization-and-back-face-culling
+Copyright Dmitry V. Sokolov
+
+This software is provided 'as-is', without any express or implied warranty.
+In no event will the authors be held liable for any damages arising from the use of this software.
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it freely,
+subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+*/
+static void RasterizeTriangle(uint8_t *dest, int destWidth, const int *t0, const int *t1, const int *t2, const uint8_t *color)
+{
+	if (t0[1] > t1[1]) std::swap(t0, t1);
+	if (t0[1] > t2[1]) std::swap(t0, t2);
+	if (t1[1] > t2[1]) std::swap(t1, t2);
+	int total_height = t2[1] - t0[1];
+	for (int i = 0; i < total_height; i++) {
+		bool second_half = i > t1[1] - t0[1] || t1[1] == t0[1];
+		int segment_height = second_half ? t2[1] - t1[1] : t1[1] - t0[1];
+		float alpha = (float)i / total_height;
+		float beta = (float)(i - (second_half ? t1[1] - t0[1] : 0)) / segment_height;
+		int A[2], B[2];
+		for (int j = 0; j < 2; j++) {
+			A[j] = int(t0[j] + (t2[j] - t0[j]) * alpha);
+			B[j] = int(second_half ? t1[j] + (t2[j] - t1[j]) * beta : t0[j] + (t1[j] - t0[j]) * beta);
+		}
+		if (A[0] > B[0]) std::swap(A, B);
+		for (int j = A[0]; j <= B[0]; j++)
+			SetPixel(dest, destWidth, j, t0[1] + i, color);
+	}
+}
+static void XAtlasDebugRender(const xatlas::Atlas* atlas) {
+    if (atlas->width > 0 && atlas->height > 0) {
+        printf("Rasterizing result...\n");
+        // Dump images.
+        std::vector<uint8_t> outputTrisImage, outputChartsImage;
+        const uint32_t imageDataSize = atlas->width * atlas->height * 3;
+        outputTrisImage.resize(atlas->atlasCount * imageDataSize);
+        outputChartsImage.resize(atlas->atlasCount * imageDataSize);
+        for (uint32_t i = 0; i < atlas->meshCount; i++) {
+            const xatlas::Mesh &mesh = atlas->meshes[i];
+            // Rasterize mesh triangles.
+            const uint8_t white[] = { 255, 255, 255 };
+            for (uint32_t j = 0; j < mesh.indexCount; j += 3) {
+                int32_t atlasIndex = -1;
+                bool skip = false;
+                int verts[3][2];
+                for (int k = 0; k < 3; k++) {
+                    const xatlas::Vertex &v = mesh.vertexArray[mesh.indexArray[j + k]];
+                    if (v.atlasIndex == -1) {
+                        skip = true;
+                        break;
+                    }
+                    atlasIndex = v.atlasIndex;
+                    verts[k][0] = int(v.uv[0]);
+                    verts[k][1] = int(v.uv[1]);
+                }
+                if (skip)
+                    continue; // Skip triangles that weren't atlased.
+                uint8_t color[3];
+                RandomColor(color);
+                uint8_t *imageData = &outputTrisImage[atlasIndex * imageDataSize];
+                RasterizeTriangle(imageData, atlas->width, verts[0], verts[1], verts[2], color);
+                RasterizeLine(imageData, atlas->width, verts[0], verts[1], white);
+                RasterizeLine(imageData, atlas->width, verts[1], verts[2], white);
+                RasterizeLine(imageData, atlas->width, verts[2], verts[0], white);
+            }
+            // Rasterize mesh charts.
+            for (uint32_t j = 0; j < mesh.chartCount; j++) {
+                const xatlas::Chart *chart = &mesh.chartArray[j];
+                uint8_t color[3];
+                RandomColor(color);
+                for (uint32_t k = 0; k < chart->faceCount; k++) {
+                    int verts[3][2];
+                    for (int l = 0; l < 3; l++) {
+                        const xatlas::Vertex &v = mesh.vertexArray[mesh.indexArray[chart->faceArray[k] * 3 + l]];
+                        verts[l][0] = int(v.uv[0]);
+                        verts[l][1] = int(v.uv[1]);
+                    }
+                    uint8_t *imageData = &outputChartsImage[chart->atlasIndex * imageDataSize];
+                    RasterizeTriangle(imageData, atlas->width, verts[0], verts[1], verts[2], color);
+                    RasterizeLine(imageData, atlas->width, verts[0], verts[1], white);
+                    RasterizeLine(imageData, atlas->width, verts[1], verts[2], white);
+                    RasterizeLine(imageData, atlas->width, verts[2], verts[0], white);
+                }
+            }
+        }
+        for (uint32_t i = 0; i < atlas->atlasCount; i++) {
+            char filename[256];
+            snprintf(filename, sizeof(filename), "example_uvmesh_tris%02u.tga", i);
+            printf("Writing '%s'...\n", filename);
+            stbi_write_tga(filename, atlas->width, atlas->height, 3, &outputTrisImage[i * imageDataSize]);
+            snprintf(filename, sizeof(filename), "example_uvmesh_charts%02u.tga", i);
+            printf("Writing '%s'...\n", filename);
+            stbi_write_tga(filename, atlas->width,atlas->height, 3, &outputChartsImage[i * imageDataSize]);
+        }
+    }
+}
+
+ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds) {
+    if(verts.empty()) {
+        return {0, 0};
+    }
+    
+    xatlas::MeshDecl mesh_decl;
+    mesh_decl.vertexCount = verts.size();
+    mesh_decl.vertexPositionData = &verts.data()->pos;
+    mesh_decl.vertexPositionStride = sizeof(Vertex);
+    mesh_decl.indexCount = inds.size();
+    mesh_decl.indexData = inds.data();
+    mesh_decl.indexFormat = xatlas::IndexFormat::UInt32;
+
+    xatlas::Atlas* atlas = xatlas::Create();
+    xatlas::AddMeshError error = xatlas::AddMesh(atlas, mesh_decl);
+    if(error != xatlas::AddMeshError::Success) {
+        xatlas::Destroy(atlas);
+        std::cout << "[xatlas]: Error adding mesh '" <<  xatlas::StringForEnum(error) << "'" << std::endl;
+        return {0, 0};
+    }
+    xatlas::Generate(atlas);
+    
+    
+    if(atlas->atlasCount != 1) {
+        std::cout << "[xatlas]: Error xatlas created " << atlas->atlasCount << " atlases, but I just want exactly one in the GenerateUV function" << std::endl;
+        xatlas::Destroy(atlas);
+        return {0, 0};
+    }
+    //XAtlasDebugRender(atlas);
+
+    glm::vec2 inv_sz = 1.0f / glm::vec2((float)atlas->width, (float)atlas->height);
+    for(uint32_t i = 0; i < atlas->meshCount; ++i) {
+        const xatlas::Mesh& mesh = atlas->meshes[i];
+        for(uint32_t j = 0; j < mesh.vertexCount; ++j) {
+            const xatlas::Vertex &v = mesh.vertexArray[j];
+            if(v.xref < verts.size()) {
+                verts.at(v.xref).uv = (glm::vec2(v.uv[0], v.uv[1]) * inv_sz);
+            }
+        }
+    }
+    
+    xatlas::Destroy(atlas);
+    return {atlas->width, atlas->height};
 }

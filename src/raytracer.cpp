@@ -7,6 +7,7 @@ struct RayHitResult {
     glm::vec3 pos;
     glm::vec3 normal;
     glm::vec4 col;
+    glm::vec2 uv;
     float length;
     bool hit;
 };
@@ -44,6 +45,7 @@ static RayHitResult RayTriangleIntersection(const Ray& ray, const Vertex& v1, co
     hit_result.pos = ray.origin + ray.dir * dst;
     hit_result.normal = glm::normalize(v1.nor * w + v2.nor * u + v3.nor * v);
     hit_result.col = (v1.col * w + v2.col * u + v3.col * v);
+    hit_result.uv = (v1.uv * w + v2.uv * u + v3.uv * v);
     hit_result.length = dst;
 
     return hit_result;
@@ -205,27 +207,6 @@ void BoundingVolumeHierarchy::Destroy() {
         this->root_node.child_2 = nullptr;
     }
 }
-RayImage::RayImage(RayImage&& o) {
-    this->Destroy();
-    this->colors = o.colors;
-    this->width = o.width;
-    this->height = o.height;
-    this->num_rendered_frames = o.num_rendered_frames;
-}
-RayImage& RayImage::operator=(RayImage&& o) {
-    this->Destroy();
-    this->colors = o.colors;
-    this->width = o.width;
-    this->height = o.height;
-    this->num_rendered_frames = o.num_rendered_frames;
-    return *this;
-}
-void RayImage::Destroy() {
-    if(this->colors) {
-        delete[] this->colors;
-    }
-    this->colors = nullptr;
-}
 static RayHitResult RayBoundingVolumeHierarchyTest(const Ray& ray, const BoundingVolumeHierarchy& bvh) {
     static std::vector<const BVHNode*> node_stack;
     RayHitResult hit_result = {};
@@ -282,8 +263,8 @@ RayImage RayTraceMesh(const RayCamera& cam, const Mesh& mesh, const glm::mat4& i
         image.colors[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    const float sx = 1.0f / (float)(w - 1);
-    const float sy = 1.0f / (float)(h - 1);
+    const float sx = 1.0f / (float)w;
+    const float sy = 1.0f / (float)h;
     for(uint32_t j = 0; j < h; ++j) {
         const float py = sy * (h - 1 - j);
         for(uint32_t i = 0; i < w; ++i) {
@@ -336,8 +317,8 @@ RayImage RayTraceBVH(const RayCamera& cam, const BoundingVolumeHierarchy& bvh, c
         image.colors[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    const float sx = 1.0f / (float)(w - 1);
-    const float sy = 1.0f / (float)(h - 1);
+    const float sx = 1.0f / (float)w;
+    const float sy = 1.0f / (float)h;
     for(uint32_t j = 0; j < h; ++j) {
         const float py = sy * (h - 1 - j);
         for(uint32_t i = 0; i < w; ++i) {
@@ -396,12 +377,11 @@ static glm::vec4 GetEnvironmentLight(const Ray& ray) {
     }
     return glm::vec4(0.0f);
 }
-static glm::vec4 ShootRayInScene(const Ray& ray, const RayScene& scene, uint32_t max_bounces) {
-    glm::vec4 cur_col = {1.0f, 1.0f, 1.0f, 1.0f};
-    glm::vec4 light_col = {0.0f, 0.0f, 0.0f, 1.0f};
+static glm::vec4 ShootRayInScene(const Ray& ray, const RayScene& scene, const glm::vec4& start_col, const glm::vec4& start_light_col, uint32_t max_bounces) {
+    glm::vec4 cur_col = start_col;
+    glm::vec4 light_col = start_light_col;
 
     Ray main_ray = ray;
-    bool got_to_nothing = false;
     for(uint32_t i = 0; i < max_bounces; ++i) {
         RayHitResult cur_hit_result = RaySceneCollisionTest(main_ray, scene);
         if(cur_hit_result.hit) {
@@ -409,6 +389,7 @@ static glm::vec4 ShootRayInScene(const Ray& ray, const RayScene& scene, uint32_t
 
             main_ray.origin = cur_hit_result.pos;
 
+            //glm::vec3 diffuse_dir = glm::normalize(cur_hit_result.normal + GetRandomNormalizedVector());
             glm::vec3 diffuse_dir = GetRandomNormalizedVector();
             if(glm::dot(diffuse_dir, cur_hit_result.normal) < 0.0f) {
                 diffuse_dir = -diffuse_dir;
@@ -421,13 +402,13 @@ static glm::vec4 ShootRayInScene(const Ray& ray, const RayScene& scene, uint32_t
             cur_col *= glm::mix(cur_hit_result.col, cur_hit_result.material->specular_col, specular);
 
             const float p = glm::max(cur_col.r, glm::max(cur_col.g, cur_col.b));
-            if(p <= 1e-5f) {
+            if(p <= 1e-10f) {
                 break;
             }
             cur_col *= 1.0f / p;
         }
         else {
-            //light_col += GetEnvironmentLight(main_ray) * cur_col;
+            light_col += GetEnvironmentLight(main_ray) * cur_col;
             break;
         }
     }
@@ -439,9 +420,11 @@ RayImage RayTraceScene(const RayCamera& cam, const RayScene& scene, uint32_t max
         image.colors[i] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     }
     const float color_scale = 1.0f / (float)sample_count;
+    const glm::vec4 start_col = {1.0f, 1.0f, 1.0f, 1.0f};
+    const glm::vec4 start_light_col = {0.0f, 0.0f, 0.0f, 1.0f};
 
-    const float sx = 1.0f / (float)(w - 1);
-    const float sy = 1.0f / (float)(h - 1);
+    const float sx = 1.0f / (float)w;
+    const float sy = 1.0f / (float)h;
     const glm::vec2 pixel_scale = glm::vec2(sx, sy);
     for(uint32_t j = 0; j < h; ++j) {
         const float py = sy * (h - 1 - j);
@@ -457,7 +440,7 @@ RayImage RayTraceScene(const RayCamera& cam, const RayScene& scene, uint32_t max
                 Ray ray = {};
                 ray.dir = glm::normalize(offset_point - cam.pos);
                 ray.origin = cam.pos;
-                accum_col += ShootRayInScene(ray, scene, max_bounces);
+                accum_col += ShootRayInScene(ray, scene, start_col, start_light_col, max_bounces);
             }
             image.colors[j * w + i] = accum_col * color_scale;
         }
@@ -470,10 +453,12 @@ void RayTraceSceneAccumulate(RayImage& img, const RayCamera& cam, const RayScene
     const uint32_t w = img.width;
     const uint32_t h = img.height;
 
-    const float sx = 1.0f / (float)(w - 1);
-    const float sy = 1.0f / (float)(h - 1);
+    const float sx = 1.0f / (float)w;
+    const float sy = 1.0f / (float)h;
     const glm::vec2 pixel_scale = glm::vec2(sx, sy);
-    const float weight = 1.0f / (img.num_rendered_frames + 1);
+    img.frame_scale = 1.0f / (img.num_rendered_frames + 1);
+    const glm::vec4 start_col = {1.0f, 1.0f, 1.0f, 1.0f};
+    const glm::vec4 start_light_col = {0.0f, 0.0f, 0.0f, 1.0f};
     
 
     for(uint32_t j = 0; j < h; ++j) {
@@ -490,17 +475,83 @@ void RayTraceSceneAccumulate(RayImage& img, const RayCamera& cam, const RayScene
                 Ray ray = {};
                 ray.dir = glm::normalize(offset_point - cam.pos);
                 ray.origin = cam.pos;
-                accum_col += ShootRayInScene(ray, scene, max_bounces);
+                accum_col += ShootRayInScene(ray, scene, start_col, start_light_col, max_bounces);
             }
             accum_col *= color_scale;
 
-            img.colors[j * w + i] = (img.colors[j * w + i] * (1.0f - weight) + accum_col * weight);
-            //img.colors[j * w + i].a = 1.0f;
+            img.colors[j * w + i] = (img.colors[j * w + i] * (1.0f - img.frame_scale) + accum_col * img.frame_scale);
         }
     }
     img.num_rendered_frames += 1;
-
 }
 
+void RayTraceMapper(LitObject& lit, const RayScene& scene, uint32_t max_bounces, uint32_t sample_count) {
+    if(lit.scene_idx >= scene.objects.size()) {
+        return;
+    }
+    const float color_scale = 1.0f / (float)sample_count;
+    const uint32_t w = lit.lightmap.width;
+    const uint32_t h = lit.lightmap.height;
+
+    const float inv_size_x = 1.0f / (float)w;
+    const float inv_size_y = 1.0f / (float)h;
+    const glm::vec2 pixel_scale = glm::vec2(inv_size_x, inv_size_y);
+    lit.lightmap.frame_scale = 1.0f / (lit.lightmap.num_rendered_frames + 1);
+
+    const RayObject& obj = scene.objects.at(lit.scene_idx);
+    const glm::vec4 start_col = {1.0f, 1.0f, 1.0f, 1.0f};
+    const glm::vec4 start_light_col = glm::vec4(glm::vec3(obj.material.emission_col * obj.material.emission_strength), 1.0f);
+
+    for(const auto& trig : obj.bvh->triangle_data) {
+        const glm::vec2 v21_uv = trig.v2.uv - trig.v1.uv;
+        const glm::vec2 v31_uv = trig.v3.uv - trig.v1.uv;
+        const glm::vec3 v21_pos = trig.v2.pos - trig.v1.pos;
+        const glm::vec3 v31_pos = trig.v3.pos - trig.v1.pos;
+        const glm::vec3 v21_nor = trig.v2.nor - trig.v1.nor;
+        const glm::vec3 v31_nor = trig.v3.nor - trig.v1.nor;
+        const float v21_len = glm::length(v21_uv);
+        const float v31_len = glm::length(v31_uv);
+        const glm::ivec2 start_px = trig.v1.uv * glm::vec2((float)lit.lightmap.width, (float)lit.lightmap.height);
+        const glm::ivec2 num_steps = {static_cast<int>(glm::max(v21_len / inv_size_x, v21_len / inv_size_y)), static_cast<int>(glm::max(v31_len / inv_size_x, v31_len / inv_size_y))};
+
+        const float step_x = 1.0f / (float)(num_steps.x);
+        const float step_y = 1.0f / (float)(num_steps.y);
+
+
+        glm::vec2 cur_uv = trig.v1.uv;
+        for(int y = 0; y < num_steps.y; ++y) {
+            for(int x = 0; x < num_steps.x; ++x) {
+                const glm::vec2 cur_uv = trig.v1.uv + v31_uv * (step_y * y) + v21_uv * (step_x * x);
+                const glm::ivec2 cur_px = cur_uv * glm::vec2((float)lit.lightmap.width, (float)lit.lightmap.height);
+
+                if(cur_px.x >= 0 && cur_px.x < w && cur_px.y >= 0 && cur_px.y < h && IsPointInTriangle(cur_uv, trig.v1.uv, trig.v2.uv, trig.v3.uv)) {
+                    glm::vec4 accum_col = {};
+                    for(uint32_t k = 0; k < sample_count; ++k) {
+                        Ray ray;
+                        float sx = step_x * (x + GetRandomFloat(0.0f, 1.0f));
+                        float sy = step_y * (y + GetRandomFloat(0.0f, 1.0f));
+
+                        ray.origin = obj.mat * glm::vec4((trig.v1.pos + v31_pos * sy + v21_pos * sx), 1.0f);
+                        const glm::vec3 cur_nor = obj.mat * glm::vec4((trig.v1.nor + v31_nor * sy + v21_nor * sx), 0.0f);
+                        glm::vec3 normal = GetRandomNormalizedVector();
+                        if(glm::dot(cur_nor, normal) < 0.0f) {
+                            normal = -normal;
+                        }
+
+                        ray.dir = normal;
+                        accum_col += ShootRayInScene(ray, scene, start_col, start_light_col, max_bounces);
+                    }
+                    accum_col *= color_scale;
+                    //lit.lightmap.colors[cur_px.y * w + cur_px.x] = glm::vec4(glm::abs(trig.v1.nor), 1.0f);
+                    //lit.lightmap.colors[cur_px.y * w + cur_px.x].a = 1.0f;
+                    lit.lightmap.colors[cur_px.y * w + cur_px.x] = (lit.lightmap.colors[cur_px.y * w + cur_px.x] * (1.0f - lit.lightmap.frame_scale) + accum_col * lit.lightmap.frame_scale);
+                }
+            }
+        }
+    }
+
+    
+    lit.lightmap.num_rendered_frames += 1;
+}
 
 

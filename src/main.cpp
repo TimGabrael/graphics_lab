@@ -5,6 +5,8 @@
 #include "imgui_impl_opengl3.h"
 #include "mesh_decimation.h"
 #include "raytracer.h"
+#include "stb_image.h"
+
 
 
 struct CubeScene {
@@ -18,8 +20,40 @@ struct CubeScene {
             {0.0f, 0.0f, 1.0f, 1.0f},
             {1.0f, 1.0f, 1.0f, 1.0f},
             {0.0f, 1.0f, 1.0f, 1.0f},
+
+
+            //{1.0f, 1.0f, 1.0f, 1.0f},
+            //{1.0f, 1.0f, 1.0f, 1.0f},
+            //{1.0f, 1.0f, 1.0f, 1.0f},
+            //{1.0f, 1.0f, 1.0f, 1.0f},
+            //{1.0f, 1.0f, 1.0f, 1.0f},
+            //{1.0f, 1.0f, 1.0f, 1.0f},
+
         };
         GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols);
+        ISize sz = GenerateUVs(verts, inds);
+        sz.width /= 5;
+        sz.height /= 5;
+        this->post_processing = RayImage(sz.width, sz.height);
+        ISize small_sz = sz;
+        small_sz.width /= 10;
+        small_sz.height /= 10;
+        int x,y,c;
+        stbi_uc* data = stbi_load("example_uvmesh_tris00.tga", &x, &y, &c, 4);
+        if(x > 0 && y > 0 && data) {
+            this->debug_texture = CreateTexture2D((const uint32_t*)data, x, y);
+            stbi_image_free(data);
+        }
+        else {
+            std::cout << "failed to load debug_texture" << std::endl;
+        }
+        float* hdr_data = stbi_loadf("../assets/garden.hdr", &x, &y, &c, 4);
+        if(hdr_data) {
+            this->hdr_map = CreateTexture2D((const glm::vec4*)hdr_data, x, y);
+            stbi_image_free(hdr_data);
+        }
+
+
         this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
         cube_bvh.CreateFromMesh(&cube_mesh, 8);
         RayObject obj = {};
@@ -27,17 +61,18 @@ struct CubeScene {
         this->image = RayImage(this->width, this->height);
 
         // create the scene
-        glm::mat4 mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, 0.0f));
+        glm::mat4 mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, -3.0f));
         obj.mat = mat;
         obj.inv_model_mat = glm::inverse(mat);
         obj.material.specular_col = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
         obj.material.emission_strength = 0.0f;
-        obj.material.smoothness = 0.8f;
-        obj.material.specular_probability = 0.8f;
-        ray_scene.objects.push_back(obj);
+        obj.material.smoothness = 0.0f;
+        obj.material.specular_probability = 0.0f;
+        this->ray_scene.objects.emplace_back(std::move(obj));
+        this->lit_objects.push_back({RayImage(small_sz.width, small_sz.height), 0});
 
 
-        mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, 3.0f));
+        mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, 10.0f));
         obj.mat = mat;
         obj.inv_model_mat = glm::inverse(mat);
         obj.material.specular_col = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -45,15 +80,24 @@ struct CubeScene {
         obj.material.emission_strength = 10.0f;
         obj.material.smoothness = 0.0f;
         obj.material.specular_probability = 0.0f;
-        ray_scene.objects.push_back(obj);
+        this->ray_scene.objects.emplace_back(std::move(obj));
+        this->lit_objects.push_back({RayImage(small_sz.width, small_sz.height), 1});
 
 
-        mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(10.0f, 0.1f, 10.0f)), glm::vec3(0.0f, -0.05f, 0.0f));
+        mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(30.0f, 0.1f, 30.0f)), glm::vec3(0.0f, -0.05f, 0.0f));
         obj.mat = mat;
         obj.inv_model_mat = glm::inverse(mat);
+        obj.material.specular_col = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         obj.material.emission_col = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         obj.material.emission_strength = 0.0f;
-        ray_scene.objects.push_back(obj);
+        obj.material.smoothness = 0.0f;
+        obj.material.specular_probability = 0.0f;
+        this->ray_scene.objects.emplace_back(std::move(obj));
+        this->lit_objects.push_back({RayImage(sz.width, sz.height), 2});
+
+        for(auto& lit_obj : this->lit_objects) {
+            RayTraceMapper(lit_obj, this->ray_scene, 4, 4);
+        }
     }
     CubeScene(CubeScene&) = delete;
     CubeScene(CubeScene&&) = delete;
@@ -61,41 +105,86 @@ struct CubeScene {
     }
 
     void Draw(const glm::mat4& view_mat, GLint model_loc, GLuint white_texture_id) {
-
         if(redraw || always_draw) {
             RayCamera cam;
             cam.SetFromMatrix(view_mat, this->fov, 1.0f, (float)this->width / (float)this->height);
-            RayTraceSceneAccumulate(this->image, cam, this->ray_scene, 4, 200);
+            RayTraceSceneAccumulate(this->image, cam, this->ray_scene, 4, 10);
             tex = CreateTexture2D(image.colors, image.width, image.height);
+            for(auto& lit_obj : this->lit_objects) {
+                RayTraceMapper(lit_obj, this->ray_scene, 4, 4);
+            }
             redraw = false;
         }
+
+
+
         glBindTexture(GL_TEXTURE_2D, white_texture_id);
+
+        static GLenum cur_sample_mode = GL_LINEAR;
+        uint32_t cur_obj_idx = 0;
         for(const auto& obj : this->ray_scene.objects) {
+            if(draw_illuminance) {
+                const auto& img = this->lit_objects.at(cur_obj_idx);
+                if(cur_obj_idx < this->ray_textures.size()) {
+                    this->ray_textures.at(cur_obj_idx) = CreateTexture2D(img.lightmap.colors, img.lightmap.width, img.lightmap.height);
+                    glBindTexture(GL_TEXTURE_2D, this->ray_textures.at(cur_obj_idx).id);
+                }
+                else {
+                    this->ray_textures.push_back(CreateTexture2D(img.lightmap.colors, img.lightmap.width, img.lightmap.height));
+                    glBindTexture(GL_TEXTURE_2D, this->ray_textures.at(this->ray_textures.size() - 1).id);
+                }
+            }
+            //glBindTexture(GL_TEXTURE_2D, this->debug_texture.id);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cur_sample_mode);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cur_sample_mode);
             glm::mat4 mat = glm::inverse(obj.inv_model_mat);
             glUniformMatrix4fv(model_loc, 1, GL_FALSE, (const GLfloat*)&mat);
             glBindVertexArray(this->cube_mesh.vao);
             glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+            cur_obj_idx += 1;
         }
 
         ImGui::Begin("CubeScene");
         ImGui::Image((ImTextureID)(uintptr_t)this->tex.id, {(float)this->width, (float)this->height});
         ImGui::Checkbox("Re-raytrace", &this->redraw);
         ImGui::Checkbox("always draw", &this->always_draw);
+        ImGui::Checkbox("illuminance", &this->draw_illuminance);
         if(ImGui::Button("Clear")) {
             this->image.Clear();
+        }
+        if(ImGui::Button("Clear All")) {
+            this->image.Clear();
+            for(auto& obj : this->lit_objects) {
+                obj.lightmap.Clear();
+            }
+        }
+        if(ImGui::Button("Switch sampling mode")) {
+            cur_sample_mode = cur_sample_mode == GL_LINEAR ? GL_NEAREST : GL_LINEAR;
+        }
+        if(ImGui::Button("PostProcess")) {
+            for(auto& lit_obj : this->lit_objects) {
+                this->post_processing.PostProcessLightMap(lit_obj.lightmap);
+            }
         }
         ImGui::End();
     }
 
+    
+    RayImage post_processing;
+    std::vector<LitObject> lit_objects;
+    std::vector<Texture2D> ray_textures;
+    Texture2D debug_texture;
+    Texture2D hdr_map;
     RayScene ray_scene;
     BoundingVolumeHierarchy cube_bvh;
     RayImage image;
-    uint32_t width = 40;
-    uint32_t height = 40;
+    uint32_t width = 100;
+    uint32_t height = 100;
     Texture2D tex;
     Mesh cube_mesh;
     bool redraw = true;
     bool always_draw = false;
+    bool draw_illuminance = false;
     float fov = glm::radians(45.0f);
 };
 
@@ -161,6 +250,7 @@ int main() {
     Texture2D white_texture = CreateTexture2D(&col_white, 1, 1);
 
     CubeScene cube_scene;
+
     
 
     glEnable(GL_BLEND);
@@ -245,6 +335,10 @@ int main() {
         glClearDepthf(1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glDepthMask(GL_FALSE);
+        DrawHDR(cube_scene.hdr_map, view);
+        glDepthMask(GL_TRUE);
+
         glEnable(GL_DEPTH_TEST);
 
         glUseProgram(basic_program);
@@ -254,6 +348,7 @@ int main() {
 
         glPolygonMode(GL_FRONT_AND_BACK, rendering_mode);
         cube_scene.Draw(view, model_loc, white_texture.id);
+
 
         //if(original) {
         //    auto& mesh = gltf_data.meshes.at(0);
@@ -286,6 +381,7 @@ int main() {
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 
         glfwSwapBuffers(window);
     }
