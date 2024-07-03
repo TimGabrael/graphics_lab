@@ -365,6 +365,16 @@ static RayHitResult RaySceneCollisionTest(const Ray& ray, const RayScene& scene)
     }
     return cur_hit_result;
 }
+static glm::vec4 GetEnvironmentLight(const Texture2D& hdr_map, const Ray& ray) {
+    const glm::vec4* data = (const glm::vec4*)hdr_map.data;
+    const float phi = atan2f(ray.dir.z, ray.dir.x);
+    const float theta = acosf(ray.dir.y);
+    const uint32_t x = (uint32_t)(((phi ) / (2.0f * M_PI)) * hdr_map.width) % hdr_map.width;
+    const uint32_t y = (uint32_t)((theta / M_PI) * hdr_map.height) % hdr_map.height;
+    return data[y * hdr_map.width + (hdr_map.width - 1 - x)];
+}
+
+// simple gradient
 static glm::vec4 GetEnvironmentLight(const Ray& ray) {
     float sky_gradient_t = glm::pow(glm::smoothstep(0.0f, 0.4f, ray.dir.y), 0.35);
     float ground_to_sky_t = glm::smoothstep(-0.01f, 0.0f, ray.dir.y);
@@ -408,7 +418,12 @@ static glm::vec4 ShootRayInScene(const Ray& ray, const RayScene& scene, const gl
             cur_col *= 1.0f / p;
         }
         else {
-            light_col += GetEnvironmentLight(main_ray) * cur_col;
+            if(scene.hdr_map) {
+                light_col += GetEnvironmentLight(*scene.hdr_map, main_ray);
+            }
+            else {
+                light_col += GetEnvironmentLight(main_ray) * cur_col;
+            }
             break;
         }
     }

@@ -95,6 +95,8 @@ struct CubeScene {
         this->ray_scene.objects.emplace_back(std::move(obj));
         this->lit_objects.push_back({RayImage(sz.width, sz.height), 2});
 
+        this->ray_scene.hdr_map = &this->hdr_map;
+
         for(auto& lit_obj : this->lit_objects) {
             RayTraceMapper(lit_obj, this->ray_scene, 4, 4);
         }
@@ -300,18 +302,36 @@ int main() {
         float camY = cos(theta) * radius + center.y;
         float camZ = sin(theta) * cos(phi) * radius + center.z;
         if(ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            const glm::mat4 inv_view_mat = glm::inverse(view);
+            glm::vec3 right     = -glm::vec3(inv_view_mat[0][0], inv_view_mat[0][1], inv_view_mat[0][2]);
+            glm::vec3 up        = glm::vec3(inv_view_mat[1][0], inv_view_mat[1][1], inv_view_mat[1][2]);
+            glm::vec3 forward   = -glm::vec3(inv_view_mat[2][0], inv_view_mat[2][1], inv_view_mat[2][2]);
+
+            constexpr float speed = 0.1f;
+            float amplitude_forward = 0.0f;
+            float amplitude_right = 0.0f;
+            float amplitude_up = 0.0f;
             if(ImGui::IsKeyDown(ImGuiKey_W)) {
-                radius = std::max(0.1f, radius - 0.1f);
+                amplitude_forward += speed;
             }
             if(ImGui::IsKeyDown(ImGuiKey_S)) {
-                radius = std::min(30.0f, radius + 0.1f);
+                amplitude_forward -= speed;
             }
             if(ImGui::IsKeyDown(ImGuiKey_A)) {
-                phi -= 0.01f;
+                amplitude_right += speed;
             }
             if(ImGui::IsKeyDown(ImGuiKey_D)) {
-                phi += 0.01f;
+                amplitude_right -= speed;
             }
+            if(ImGui::IsKeyDown(ImGuiKey_Space)) {
+                amplitude_up += speed;
+            }
+            if(ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
+                amplitude_up -= speed;
+            }
+            const glm::vec3 delta_pos = forward * amplitude_forward + right * amplitude_right + up * amplitude_up;
+            center += delta_pos;
+            camX += delta_pos.x; camY += delta_pos.y; camZ += delta_pos.z;
         }
         if(ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
             phi -= 0.02f * delta_mouse.x;
@@ -323,7 +343,9 @@ int main() {
             glm::vec3 up        = glm::vec3(inv_view_mat[1][0], inv_view_mat[1][1], inv_view_mat[1][2]);
             glm::vec3 forward   = -glm::vec3(inv_view_mat[2][0], inv_view_mat[2][1], inv_view_mat[2][2]);
 
-            center += 0.1f * (delta_mouse.x * right + delta_mouse.y * up);
+            const glm::vec3 delta_pos = 0.1f * (delta_mouse.x * right + delta_mouse.y * up);
+            center += delta_pos;
+            camX += delta_pos.x; camY += delta_pos.y; camZ += delta_pos.z;
         }
 
     
