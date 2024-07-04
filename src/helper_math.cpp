@@ -25,6 +25,9 @@ float CalcTriangleArea(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3
     const float s3 = v12.x * v13.y - v12.y * v13.x;
     return 0.5f * sqrtf(s1 * s1 + s2 * s2 + s3 * s3);
 }
+float CalcSignedTriangleArea(const glm::vec2& p1, const glm::vec2& p2, const glm::vec2& p3) {
+    return (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+}
 
 float AngleBetweenVectors(const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& reference_up) {
     float dot = glm::dot(v1, v2);

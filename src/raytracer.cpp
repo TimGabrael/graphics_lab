@@ -419,7 +419,7 @@ static glm::vec4 ShootRayInScene(const Ray& ray, const RayScene& scene, const gl
         }
         else {
             if(scene.hdr_map) {
-                light_col += GetEnvironmentLight(*scene.hdr_map, main_ray);
+                light_col += GetEnvironmentLight(*scene.hdr_map, main_ray) * cur_col;
             }
             else {
                 light_col += GetEnvironmentLight(main_ray) * cur_col;
@@ -427,6 +427,7 @@ static glm::vec4 ShootRayInScene(const Ray& ray, const RayScene& scene, const gl
             break;
         }
     }
+    light_col.a = 1.0f;
     return light_col;
 }
 RayImage RayTraceScene(const RayCamera& cam, const RayScene& scene, uint32_t max_bounces, uint32_t sample_count, uint32_t w, uint32_t h) {
@@ -500,6 +501,7 @@ void RayTraceSceneAccumulate(RayImage& img, const RayCamera& cam, const RayScene
     img.num_rendered_frames += 1;
 }
 
+
 void RayTraceMapper(LitObject& lit, const RayScene& scene, uint32_t max_bounces, uint32_t sample_count) {
     if(lit.scene_idx >= scene.objects.size()) {
         return;
@@ -508,60 +510,85 @@ void RayTraceMapper(LitObject& lit, const RayScene& scene, uint32_t max_bounces,
     const uint32_t w = lit.lightmap.width;
     const uint32_t h = lit.lightmap.height;
 
-    const float inv_size_x = 1.0f / (float)w;
-    const float inv_size_y = 1.0f / (float)h;
-    const glm::vec2 pixel_scale = glm::vec2(inv_size_x, inv_size_y);
     lit.lightmap.frame_scale = 1.0f / (lit.lightmap.num_rendered_frames + 1);
 
     const RayObject& obj = scene.objects.at(lit.scene_idx);
     const glm::vec4 start_col = {1.0f, 1.0f, 1.0f, 1.0f};
     const glm::vec4 start_light_col = glm::vec4(glm::vec3(obj.material.emission_col * obj.material.emission_strength), 1.0f);
 
+    RayImage accum_image(lit.lightmap.width, lit.lightmap.height);
+
     for(const auto& trig : obj.bvh->triangle_data) {
-        const glm::vec2 v21_uv = trig.v2.uv - trig.v1.uv;
-        const glm::vec2 v31_uv = trig.v3.uv - trig.v1.uv;
-        const glm::vec3 v21_pos = trig.v2.pos - trig.v1.pos;
-        const glm::vec3 v31_pos = trig.v3.pos - trig.v1.pos;
-        const glm::vec3 v21_nor = trig.v2.nor - trig.v1.nor;
-        const glm::vec3 v31_nor = trig.v3.nor - trig.v1.nor;
-        const float v21_len = glm::length(v21_uv);
-        const float v31_len = glm::length(v31_uv);
-        const glm::ivec2 start_px = trig.v1.uv * glm::vec2((float)lit.lightmap.width, (float)lit.lightmap.height);
-        const glm::ivec2 num_steps = {static_cast<int>(glm::max(v21_len / inv_size_x, v21_len / inv_size_y)), static_cast<int>(glm::max(v31_len / inv_size_x, v31_len / inv_size_y))};
+        const glm::vec2 vmin = glm::min(glm::min(trig.v1.uv, trig.v2.uv), trig.v3.uv);
+        const glm::vec2 vmax = glm::max(glm::max(trig.v1.uv, trig.v2.uv), trig.v3.uv);
 
-        const float step_x = 1.0f / (float)(num_steps.x);
-        const float step_y = 1.0f / (float)(num_steps.y);
+        const glm::ivec2 num_steps = (vmax - vmin) * glm::vec2((float)w, (float)h) + glm::vec2(2, 2);
+        const glm::vec2 vsize = (vmax - vmin);
 
+        const float step_x = 1.0f / (float)(num_steps.x - 1) * vsize.x;
+        const float step_y = 1.0f / (float)(num_steps.y - 1) * vsize.y;
+        
+        const float inv_signed_area = 1.0f / CalcSignedTriangleArea(trig.v1.uv, trig.v2.uv, trig.v3.uv);
+        for(int y = 0; y <= num_steps.y; ++y) {
+            for(int x = 0; x <= num_steps.x; ++x) {
+                for(uint32_t k = 0; k < sample_count; ++k) {
+                    const float sx = step_x * ((float)(x - 1) + GetRandomFloat(-0.5f, 0.5f));
+                    const float sy = step_y * ((float)(y - 1) + GetRandomFloat(-0.5f, 0.5f));
 
-        glm::vec2 cur_uv = trig.v1.uv;
-        for(int y = 0; y < num_steps.y; ++y) {
-            for(int x = 0; x < num_steps.x; ++x) {
-                const glm::vec2 cur_uv = trig.v1.uv + v31_uv * (step_y * y) + v21_uv * (step_x * x);
-                const glm::ivec2 cur_px = cur_uv * glm::vec2((float)lit.lightmap.width, (float)lit.lightmap.height);
-
-                if(cur_px.x >= 0 && cur_px.x < w && cur_px.y >= 0 && cur_px.y < h && IsPointInTriangle(cur_uv, trig.v1.uv, trig.v2.uv, trig.v3.uv)) {
-                    glm::vec4 accum_col = {};
-                    for(uint32_t k = 0; k < sample_count; ++k) {
+                    const glm::vec2 cur_uv = vmin + glm::vec2(sx, sy);
+                    glm::ivec2 cur_px = cur_uv * glm::vec2((float)w, (float)h);
+                    if(cur_px.x < 0 || cur_px.x >= w || cur_px.y < 0 || cur_px.y >= h) {
+                        continue;
+                    }
+                    
+                    const float abp = CalcSignedTriangleArea(trig.v1.uv, trig.v2.uv, cur_uv) * inv_signed_area;
+                    const float bcp = CalcSignedTriangleArea(trig.v2.uv, trig.v3.uv, cur_uv) * inv_signed_area;
+                    const float cap = CalcSignedTriangleArea(trig.v3.uv, trig.v1.uv, cur_uv) * inv_signed_area;
+                    const float epsilon = 4.0f * std::max(step_x, step_y);
+                    if((abp >= -epsilon && bcp >= -epsilon && cap >= -epsilon)) {
                         Ray ray;
-                        float sx = step_x * (x + GetRandomFloat(0.0f, 1.0f));
-                        float sy = step_y * (y + GetRandomFloat(0.0f, 1.0f));
 
-                        ray.origin = obj.mat * glm::vec4((trig.v1.pos + v31_pos * sy + v21_pos * sx), 1.0f);
-                        const glm::vec3 cur_nor = obj.mat * glm::vec4((trig.v1.nor + v31_nor * sy + v21_nor * sx), 0.0f);
+                        const glm::vec3 pos = (trig.v3.pos * abp + trig.v1.pos * bcp + trig.v2.pos * cap);
+                        const glm::vec3 nor = (trig.v3.nor * abp + trig.v1.nor * bcp + trig.v2.nor * cap);
+
+                        ray.origin = obj.mat * glm::vec4(pos, 1.0f);
+                        const glm::vec3 cur_nor = glm::normalize(obj.mat * glm::vec4(nor, 0.0f));
                         glm::vec3 normal = GetRandomNormalizedVector();
                         if(glm::dot(cur_nor, normal) < 0.0f) {
                             normal = -normal;
                         }
-
                         ray.dir = normal;
-                        accum_col += ShootRayInScene(ray, scene, start_col, start_light_col, max_bounces);
+                        accum_image.colors[cur_px.y * w + cur_px.x] += ShootRayInScene(ray, scene, start_col, start_light_col, max_bounces);
                     }
-                    accum_col *= color_scale;
-                    //lit.lightmap.colors[cur_px.y * w + cur_px.x] = glm::vec4(glm::abs(trig.v1.nor), 1.0f);
-                    //lit.lightmap.colors[cur_px.y * w + cur_px.x].a = 1.0f;
-                    lit.lightmap.colors[cur_px.y * w + cur_px.x] = (lit.lightmap.colors[cur_px.y * w + cur_px.x] * (1.0f - lit.lightmap.frame_scale) + accum_col * lit.lightmap.frame_scale);
                 }
             }
+        }
+    }
+    for(size_t i = 0; i < accum_image.width * accum_image.height; ++i) {
+        if(accum_image.colors[i].a <= 0.0f) {
+            const uint32_t x = i % accum_image.width;
+            const uint32_t y = i / accum_image.width;
+            
+            // find a neighbour that is filled in and use that as the current result
+            bool found = false;
+            for(int cy = -1; cy <= 1 && found; ++cy) {
+                for(int cx = -1; cx <= 1 && found; ++cx) {
+                    const uint32_t vy = y + cy;
+                    const uint32_t vx = x + cx;
+                    if(vx < accum_image.width && vy < accum_image.height) {
+                        const glm::vec4& c = accum_image.colors[vy * accum_image.width + vx];
+                        if(c.a > 0.0f) {
+                            accum_image.colors[i] = c / c.a;
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            const float color_scale = 1.0f / accum_image.colors[i].a;
+            const glm::vec4 accum_col = accum_image.colors[i] * color_scale;
+            lit.lightmap.colors[i] = (lit.lightmap.colors[i] * (1.0f - lit.lightmap.frame_scale) + accum_col * lit.lightmap.frame_scale);
         }
     }
 

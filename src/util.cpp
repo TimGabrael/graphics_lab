@@ -688,19 +688,24 @@ ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds)
     xatlas::MeshDecl mesh_decl;
     mesh_decl.vertexCount = verts.size();
     mesh_decl.vertexPositionData = &verts.data()->pos;
+    mesh_decl.vertexNormalData = &verts.data()->nor;
+    mesh_decl.vertexNormalStride = sizeof(Vertex);
     mesh_decl.vertexPositionStride = sizeof(Vertex);
     mesh_decl.indexCount = inds.size();
     mesh_decl.indexData = inds.data();
     mesh_decl.indexFormat = xatlas::IndexFormat::UInt32;
 
     xatlas::Atlas* atlas = xatlas::Create();
+    
     xatlas::AddMeshError error = xatlas::AddMesh(atlas, mesh_decl);
     if(error != xatlas::AddMeshError::Success) {
         xatlas::Destroy(atlas);
         std::cout << "[xatlas]: Error adding mesh '" <<  xatlas::StringForEnum(error) << "'" << std::endl;
         return {0, 0};
     }
-    xatlas::Generate(atlas);
+    xatlas::PackOptions options;
+    options.padding = 4;
+    xatlas::Generate(atlas, xatlas::ChartOptions(), options);
     
     
     if(atlas->atlasCount != 1) {
@@ -708,7 +713,7 @@ ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds)
         xatlas::Destroy(atlas);
         return {0, 0};
     }
-    //XAtlasDebugRender(atlas);
+    XAtlasDebugRender(atlas);
 
     glm::vec2 inv_sz = 1.0f / glm::vec2((float)atlas->width, (float)atlas->height);
     for(uint32_t i = 0; i < atlas->meshCount; ++i) {

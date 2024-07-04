@@ -6,6 +6,7 @@
 #include "mesh_decimation.h"
 #include "raytracer.h"
 #include "stb_image.h"
+#include "stb_image_write.h"
 
 
 
@@ -36,8 +37,8 @@ struct CubeScene {
         sz.height /= 5;
         this->post_processing = RayImage(sz.width, sz.height);
         ISize small_sz = sz;
-        small_sz.width /= 10;
-        small_sz.height /= 10;
+        small_sz.width /= 5;
+        small_sz.height /= 5;
         int x,y,c;
         stbi_uc* data = stbi_load("example_uvmesh_tris00.tga", &x, &y, &c, 4);
         if(x > 0 && y > 0 && data) {
@@ -49,9 +50,16 @@ struct CubeScene {
         }
         float* hdr_data = stbi_loadf("../assets/garden.hdr", &x, &y, &c, 4);
         if(hdr_data) {
+            // TEMPORARY: limit the hdr range, until the rasterization code is finished
+            for(size_t i = 0; i < x * y * c; ++i) {
+                if(hdr_data[i] > 1.0f) {
+                    hdr_data[i] = 1.0f;
+                }
+            }
             this->hdr_map = CreateTexture2D((const glm::vec4*)hdr_data, x, y);
             stbi_image_free(hdr_data);
         }
+        
 
 
         this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
