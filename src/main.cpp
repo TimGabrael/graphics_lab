@@ -7,6 +7,7 @@
 #include "raytracer.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "shaders.h"
 
 
 
@@ -50,7 +51,10 @@ struct CubeScene {
         }
         float* hdr_data = stbi_loadf("../assets/garden.hdr", &x, &y, &c, 4);
         if(hdr_data) {
-            // TEMPORARY: limit the hdr range, until the rasterization code is finished
+            // The sun is just WAAAY to bright in the hdr image,
+            // and only a few rays hit it, but the ones that do get a absurdly high value assigned
+            // and stay that way so it doesn't really converge nicely
+            // (well it would if i took millions of samples, but that takes to long)
             for(size_t i = 0; i < x * y * c; ++i) {
                 if(hdr_data[i] > 1.0f) {
                     hdr_data[i] = 1.0f;
@@ -114,7 +118,7 @@ struct CubeScene {
     ~CubeScene() {
     }
 
-    void Draw(const glm::mat4& view_mat, GLint model_loc, GLuint white_texture_id) {
+    void Draw(const glm::mat4& view_mat, const BasicShader& basic_shader, GLuint white_texture_id) {
         if(redraw || always_draw) {
             RayCamera cam;
             cam.SetFromMatrix(view_mat, this->fov, 1.0f, (float)this->width / (float)this->height);
@@ -125,9 +129,6 @@ struct CubeScene {
             }
             redraw = false;
         }
-
-
-
         glBindTexture(GL_TEXTURE_2D, white_texture_id);
 
         static GLenum cur_sample_mode = GL_LINEAR;
@@ -148,7 +149,7 @@ struct CubeScene {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cur_sample_mode);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cur_sample_mode);
             glm::mat4 mat = glm::inverse(obj.inv_model_mat);
-            glUniformMatrix4fv(model_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+            basic_shader.SetModelMatrix(mat);
             glBindVertexArray(this->cube_mesh.vao);
             glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
             cur_obj_idx += 1;
@@ -236,22 +237,7 @@ int main() {
     ImGui_ImplOpenGL3_Init(); 
 
 
-    GLuint basic_program = LoadProgramFromFile("../assets/shaders/basic.vs", "../assets/shaders/basic.fs");
-    GLint model_loc = glGetUniformLocation(basic_program, "model");
-    GLint view_loc = glGetUniformLocation(basic_program, "view");
-    GLint proj_loc = glGetUniformLocation(basic_program, "projection");
-
-    //GLTFLoadData gltf_data = LoadGLTFLoadData("../assets/bee'maw.glb");
-    //Mesh decimated_mesh = DecimateMesh(&gltf_data.meshes.at(0).mesh, 40000.0f);
-
-    //BoundingBox model_bb = {{FLT_MAX, FLT_MAX, FLT_MAX}, {-FLT_MAX, -FLT_MAX, -FLT_MAX}};
-    //for(auto& m : gltf_data.meshes) {
-    //    model_bb.max = glm::max(model_bb.max, m.mesh.bb.max);
-    //    model_bb.min = glm::min(model_bb.min, m.mesh.bb.min);
-    //}
-    //glm::vec3 bb_hsz = (model_bb.max - model_bb.min) / 2.0f;
-    //
-    //glm::mat4 model = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(0.001f)), -bb_hsz);
+    BasicShader basic_shader;
 
     glm::mat4 view = glm::lookAt(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.01f, 100.0f);
@@ -262,7 +248,6 @@ int main() {
     CubeScene cube_scene;
 
     
-
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_CULL_FACE);
@@ -273,25 +258,6 @@ int main() {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
-        static const char* rendering_modes[] = {
-            "GL_FILL",
-            "GL_LINE",
-            "GL_POINT"
-        };
-        static GLenum rendering_modes_enum[] = {
-            GL_FILL,
-            GL_LINE,
-            GL_POINT
-        };
-        static bool original = false;
-        static int cur_rendering_mode = 0;
-        //ImGui::Begin("rendering_mode");
-        //ImGui::ListBox("mode", &cur_rendering_mode, rendering_modes, ARRSIZE(rendering_modes));
-        //ImGui::Checkbox("Original", &original);
-        //ImGui::End();
-
-        GLenum rendering_mode = rendering_modes_enum[cur_rendering_mode];
 
         int win_width, win_height = 0;
         glfwGetWindowSize(window, &win_width, &win_height);
@@ -306,14 +272,19 @@ int main() {
         static float radius = 5.0f;
         static float phi = 0.0f;
         static float theta = M_PI / 4.0f;
-        float camX = sin(theta) * sin(phi) * radius + center.x;
-        float camY = cos(theta) * radius + center.y;
-        float camZ = sin(theta) * cos(phi) * radius + center.z;
+        glm::vec3 cam_pos = glm::vec3(sin(theta) * sin(phi), cos(theta), sin(theta) * cos(phi)) * radius + center;
         if(ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const glm::mat4 inv_view_mat = glm::inverse(view);
-            glm::vec3 right     = -glm::vec3(inv_view_mat[0][0], inv_view_mat[0][1], inv_view_mat[0][2]);
-            glm::vec3 up        = glm::vec3(inv_view_mat[1][0], inv_view_mat[1][1], inv_view_mat[1][2]);
-            glm::vec3 forward   = -glm::vec3(inv_view_mat[2][0], inv_view_mat[2][1], inv_view_mat[2][2]);
+            glm::vec3 right = -glm::vec3(inv_view_mat[0][0], inv_view_mat[0][1], inv_view_mat[0][2]);
+            right = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
+            glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+            phi -= 0.01f * delta_mouse.x;
+            theta -= 0.01f * delta_mouse.y;
+            glm::vec3 forward = -glm::vec3(sin(theta) * sin(phi), cos(theta), sin(theta) * cos(phi));
+            center = forward * radius + cam_pos;
+
+            forward = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z));
 
             constexpr float speed = 0.1f;
             float amplitude_forward = 0.0f;
@@ -337,9 +308,10 @@ int main() {
             if(ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
                 amplitude_up -= speed;
             }
-            const glm::vec3 delta_pos = forward * amplitude_forward + right * amplitude_right + up * amplitude_up;
+            const glm::vec3 delta_pos = forward * amplitude_forward + right * amplitude_right + glm::vec3(0.0f, 1.0f, 0.0f) * amplitude_up;
             center += delta_pos;
-            camX += delta_pos.x; camY += delta_pos.y; camZ += delta_pos.z;
+            cam_pos += delta_pos;
+
         }
         if(ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
             phi -= 0.02f * delta_mouse.x;
@@ -353,11 +325,10 @@ int main() {
 
             const glm::vec3 delta_pos = 0.1f * (delta_mouse.x * right + delta_mouse.y * up);
             center += delta_pos;
-            camX += delta_pos.x; camY += delta_pos.y; camZ += delta_pos.z;
+            cam_pos += delta_pos;
         }
 
-    
-        view = glm::lookAt(glm::vec3(camX, camY, camZ), center, glm::vec3(0.0, 1.0, 0.0));  
+        view = glm::lookAt(cam_pos, center, glm::vec3(0.0, 1.0, 0.0));  
 
 
         glViewport(0, 0, win_width, win_height);
@@ -371,40 +342,13 @@ int main() {
 
         glEnable(GL_DEPTH_TEST);
 
-        glUseProgram(basic_program);
-        //glUniformMatrix4fv(model_loc, 1, GL_FALSE, (const GLfloat*)&model);
-        glUniformMatrix4fv(view_loc, 1, GL_FALSE, (const GLfloat*)&view);
-        glUniformMatrix4fv(proj_loc, 1, GL_FALSE, (const GLfloat*)&proj);
+        basic_shader.Bind();
+        basic_shader.SetViewMatrix(view);
+        basic_shader.SetProjectionMatrix(proj);
 
-        glPolygonMode(GL_FRONT_AND_BACK, rendering_mode);
-        cube_scene.Draw(view, model_loc, white_texture.id);
+        cube_scene.Draw(view, basic_shader, white_texture.id);
 
 
-        //if(original) {
-        //    auto& mesh = gltf_data.meshes.at(0);
-        //    auto& mat = gltf_data.materials.at(mesh.material_idx);
-        //    glBindTexture(GL_TEXTURE_2D, gltf_data.textures.at(mat.base_color.idx).id);
-
-        //    glBindVertexArray(mesh.mesh.vao);
-        //    glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
-        //}
-        //else {
-        //    auto& mesh = decimated_mesh;
-        //    auto& mat = gltf_data.materials.at(mesh.material_idx);
-        //    glBindTexture(GL_TEXTURE_2D, gltf_data.textures.at(mat.base_color.idx).id);
-
-        //    glBindVertexArray(mesh.vao);
-        //    glDrawElements(GL_TRIANGLES, mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
-        //}
-        
-        //for(auto& mesh : gltf_data.meshes) {
-        //    auto& mat = gltf_data.materials.at(mesh.material_idx);
-        //    glBindTexture(GL_TEXTURE_2D, gltf_data.textures.at(mat.base_color.idx).id);
-
-        //    glBindVertexArray(mesh.mesh.vao);
-        //    glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
-        //}
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         glBindVertexArray(0);
 
@@ -417,7 +361,6 @@ int main() {
     }
 
 
-    glDeleteProgram(basic_program);
 
     glfwTerminate();
     glfwDestroyWindow(window);
