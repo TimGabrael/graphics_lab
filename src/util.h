@@ -8,6 +8,7 @@
 #include "GLFW/glfw3.h"
 #include "tiny_gltf.h"
 #include <corecrt_math_defines.h>
+#include "FastNoise.h"
 
 #define INVALID_GL_HANDLE 0xFFFFFFFFu
 #define ARRSIZE(arr) (sizeof(arr) / sizeof(*arr))
@@ -38,6 +39,22 @@ struct Texture2D {
     uint32_t num_channels = 0;
     void* data = nullptr;
     DataType type;
+};
+struct RenderTexture {
+    static constexpr size_t MAX_COLOR_BUFFERS = 4;
+    RenderTexture() {};
+    RenderTexture(RenderTexture&& o);
+    ~RenderTexture();
+    RenderTexture& operator=(RenderTexture&& o);
+    RenderTexture(const RenderTexture&) = delete;
+    void Begin(const glm::vec4& clear_col, float depth_clear_val = 1.0f, uint32_t stencil_clear_val = 0) const;
+    void End() const;
+
+    GLuint framebuffer_id = INVALID_GL_HANDLE;
+    GLuint colorbuffer_ids[MAX_COLOR_BUFFERS] = {INVALID_GL_HANDLE, INVALID_GL_HANDLE, INVALID_GL_HANDLE, INVALID_GL_HANDLE};
+    GLuint depthbuffer_id = INVALID_GL_HANDLE;
+    uint32_t width = 0;
+    uint32_t height = 0;
 };
 
 
@@ -120,7 +137,11 @@ void DestroyGLTFLoadData(GLTFLoadData* load);
 
 Texture2D CreateTexture2D(const uint32_t* data, uint32_t width, uint32_t height);
 Texture2D CreateTexture2D(const glm::vec4* data, uint32_t width, uint32_t height);
+Texture2D CreateTexture2D(const float* data, uint32_t width, uint32_t height);
 void DestroyTexture2D(Texture2D* tex);
+
+RenderTexture CreateDepthTexture(uint32_t width, uint32_t height);
+void DestroyRenderTexture(RenderTexture* tex);
 
 
 GLuint LoadProgram(const char* vs, const char* fs);

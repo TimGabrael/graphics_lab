@@ -86,6 +86,50 @@ Texture2D& Texture2D::operator=(Texture2D&& o) {
     o.num_channels = 0;
     return *this;
 }
+RenderTexture::RenderTexture(RenderTexture&& o) {
+    this->framebuffer_id = o.framebuffer_id;
+    for(size_t i = 0; i < ARRSIZE(this->colorbuffer_ids); ++i) {
+        this->colorbuffer_ids[i] = o.colorbuffer_ids[i];
+        o.colorbuffer_ids[i] = INVALID_GL_HANDLE;
+    }
+    this->depthbuffer_id = o.depthbuffer_id;
+    this->width = o.width;
+    this->height = o.height;
+    o.framebuffer_id = INVALID_GL_HANDLE;
+    o.depthbuffer_id = INVALID_GL_HANDLE;
+    o.width = 0;
+    o.height = 0;
+}
+RenderTexture::~RenderTexture() {
+    DestroyRenderTexture(this);
+}
+RenderTexture& RenderTexture::operator=(RenderTexture&& o) {
+    DestroyRenderTexture(this);
+    this->framebuffer_id = o.framebuffer_id;
+    for(size_t i = 0; i < ARRSIZE(this->colorbuffer_ids); ++i) {
+        this->colorbuffer_ids[i] = o.colorbuffer_ids[i];
+        o.colorbuffer_ids[i] = INVALID_GL_HANDLE;
+    }
+    this->depthbuffer_id = o.depthbuffer_id;
+    this->width = o.width;
+    this->height = o.height;
+    o.framebuffer_id = INVALID_GL_HANDLE;
+    o.depthbuffer_id = INVALID_GL_HANDLE;
+    o.width = 0;
+    o.height = 0;
+    return *this;
+}
+void RenderTexture::Begin(const glm::vec4& clear_col, float depth_clear_val, uint32_t stencil_clear_val) const {
+    glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer_id);
+    glViewport(0, 0, this->width, this->height);
+    glClearColor(clear_col.r, clear_col.g, clear_col.b, clear_col.a);
+    glClearDepthf(depth_clear_val);
+    glClearStencil(stencil_clear_val);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+}
+void RenderTexture::End() const {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
 
 Mesh CreateMesh(const Vertex* verts, const uint32_t* inds, uint32_t vert_count, uint32_t ind_count) {
     Mesh mesh = {};
@@ -285,12 +329,12 @@ void DestroyMesh(Mesh* mesh) {
 }
 Texture2D CreateTexture2D(const uint32_t* data, uint32_t width, uint32_t height) {
     Texture2D tex = {};
-    tex.data = malloc(sizeof(uint32_t) * width * height);
+    tex.data = malloc(sizeof(*data) * width * height);
     tex.type = Texture2D::DataType::Uint;
     tex.width = width;
     tex.height = height;
     tex.num_channels = 4;
-    memcpy(tex.data, data, width * height * sizeof(uint32_t));
+    memcpy(tex.data, data, width * height * sizeof(*data));
 
     glGenTextures(1, &tex.id);
     glBindTexture(GL_TEXTURE_2D, tex.id);
@@ -324,6 +368,26 @@ Texture2D CreateTexture2D(const glm::vec4* data, uint32_t width, uint32_t height
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data);
     return tex;
 }
+Texture2D CreateTexture2D(const float* data, uint32_t width, uint32_t height) {
+    Texture2D tex = {};
+    tex.data = malloc(sizeof(*data) * width * height);
+    tex.type = Texture2D::DataType::Float;
+    tex.width = width;
+    tex.height = height;
+    tex.num_channels = 1;
+    memcpy(tex.data, data, width * height * sizeof(*data));
+
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED, GL_FLOAT, data);
+    return tex;
+}
 void DestroyTexture2D(Texture2D* tex) {
     if(tex->data) {
         free(tex->data);
@@ -335,6 +399,49 @@ void DestroyTexture2D(Texture2D* tex) {
     }
     tex->width = 0;
     tex->height = 0;
+}
+RenderTexture CreateDepthTexture(uint32_t width, uint32_t height) {
+    RenderTexture tex;
+    tex.width = width;
+    tex.height = height;
+    glGenFramebuffers(1, &tex.framebuffer_id);
+    glBindFramebuffer(GL_FRAMEBUFFER, tex.framebuffer_id);
+
+    glGenTextures(1, &tex.depthbuffer_id);
+    glBindTexture(GL_TEXTURE_2D, tex.depthbuffer_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex.depthbuffer_id, 0);
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "failed to create Framebuffer in: CreateDepthTexture" << std::endl;
+        Sleep(10000);
+        DestroyRenderTexture(&tex);
+    }
+    return tex;
+}
+void DestroyRenderTexture(RenderTexture* tex) {
+    if(tex->framebuffer_id != INVALID_GL_HANDLE) {
+        glDeleteFramebuffers(1, &tex->framebuffer_id);
+        tex->framebuffer_id = INVALID_GL_HANDLE;
+    }
+    uint32_t colorbuffer_count = 0;
+    for(size_t i = 0; i < ARRSIZE(tex->colorbuffer_ids); ++i) {
+        if(tex->colorbuffer_ids[i] != INVALID_GL_HANDLE) {
+            colorbuffer_count += 1;
+        }
+    }
+    glDeleteTextures(colorbuffer_count, tex->colorbuffer_ids);
+    for(size_t i = 0; i < ARRSIZE(tex->colorbuffer_ids); ++i) {
+        tex->colorbuffer_ids[i] = INVALID_GL_HANDLE;
+    }
+    if(tex->depthbuffer_id != INVALID_GL_HANDLE) {
+        glDeleteTextures(1, &tex->depthbuffer_id);
+        tex->depthbuffer_id = INVALID_GL_HANDLE;
+    }
 }
 
 
@@ -426,7 +533,6 @@ void DrawHDR(const Texture2D& tex, const glm::mat4& view_matrix) {
             { 1.0f, -1.0f},
             { 1.0f,  1.0f},
         };
-
 
         glCreateVertexArrays(1, &hdr_vao);
         glBindVertexArray(hdr_vao);

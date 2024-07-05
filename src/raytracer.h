@@ -203,7 +203,7 @@ struct LitObject {
 };
 
 struct RayScene {
-    Texture2D* hdr_map;
+    const Texture2D* hdr_map;
     std::vector<RayObject> objects;
 };
 

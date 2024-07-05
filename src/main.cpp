@@ -11,8 +11,8 @@
 
 
 
-struct CubeScene {
-    CubeScene() {
+struct RaytraceCubeScene {
+    RaytraceCubeScene(const Texture2D* hdr_map) {
         std::vector<Vertex> verts;
         std::vector<uint32_t> inds;
         const glm::vec4 cols[6] = {
@@ -48,20 +48,6 @@ struct CubeScene {
         }
         else {
             std::cout << "failed to load debug_texture" << std::endl;
-        }
-        float* hdr_data = stbi_loadf("../assets/garden.hdr", &x, &y, &c, 4);
-        if(hdr_data) {
-            // The sun is just WAAAY to bright in the hdr image,
-            // and only a few rays hit it, but the ones that do get a absurdly high value assigned
-            // and stay that way so it doesn't really converge nicely
-            // (well it would if i took millions of samples, but that takes to long)
-            for(size_t i = 0; i < x * y * c; ++i) {
-                if(hdr_data[i] > 1.0f) {
-                    hdr_data[i] = 1.0f;
-                }
-            }
-            this->hdr_map = CreateTexture2D((const glm::vec4*)hdr_data, x, y);
-            stbi_image_free(hdr_data);
         }
         
 
@@ -107,15 +93,15 @@ struct CubeScene {
         this->ray_scene.objects.emplace_back(std::move(obj));
         this->lit_objects.push_back({RayImage(sz.width, sz.height), 2});
 
-        this->ray_scene.hdr_map = &this->hdr_map;
+        this->ray_scene.hdr_map = hdr_map;
 
         for(auto& lit_obj : this->lit_objects) {
             RayTraceMapper(lit_obj, this->ray_scene, 4, 4);
         }
     }
-    CubeScene(CubeScene&) = delete;
-    CubeScene(CubeScene&&) = delete;
-    ~CubeScene() {
+    RaytraceCubeScene(RaytraceCubeScene&) = delete;
+    RaytraceCubeScene(RaytraceCubeScene&&) = delete;
+    ~RaytraceCubeScene() {
     }
 
     void Draw(const glm::mat4& view_mat, const BasicShader& basic_shader, GLuint white_texture_id) {
@@ -129,7 +115,7 @@ struct CubeScene {
             }
             redraw = false;
         }
-        glBindTexture(GL_TEXTURE_2D, white_texture_id);
+        basic_shader.SetTexture(white_texture_id);
 
         static GLenum cur_sample_mode = GL_LINEAR;
         uint32_t cur_obj_idx = 0;
@@ -138,14 +124,14 @@ struct CubeScene {
                 const auto& img = this->lit_objects.at(cur_obj_idx);
                 if(cur_obj_idx < this->ray_textures.size()) {
                     this->ray_textures.at(cur_obj_idx) = CreateTexture2D(img.lightmap.colors, img.lightmap.width, img.lightmap.height);
-                    glBindTexture(GL_TEXTURE_2D, this->ray_textures.at(cur_obj_idx).id);
+                    basic_shader.SetTexture(this->ray_textures.at(cur_obj_idx).id);
                 }
                 else {
                     this->ray_textures.push_back(CreateTexture2D(img.lightmap.colors, img.lightmap.width, img.lightmap.height));
-                    glBindTexture(GL_TEXTURE_2D, this->ray_textures.at(this->ray_textures.size() - 1).id);
+                    basic_shader.SetTexture(this->ray_textures.at(this->ray_textures.size() - 1).id);
                 }
             }
-            //glBindTexture(GL_TEXTURE_2D, this->debug_texture.id);
+            //basic_shader.SetTexture(this->debug_texture.id);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cur_sample_mode);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cur_sample_mode);
             glm::mat4 mat = glm::inverse(obj.inv_model_mat);
@@ -185,7 +171,6 @@ struct CubeScene {
     std::vector<LitObject> lit_objects;
     std::vector<Texture2D> ray_textures;
     Texture2D debug_texture;
-    Texture2D hdr_map;
     RayScene ray_scene;
     BoundingVolumeHierarchy cube_bvh;
     RayImage image;
@@ -200,10 +185,116 @@ struct CubeScene {
 };
 
 
+struct IntersectionCubeScene {
+    IntersectionCubeScene(uint32_t screen_width, uint32_t screen_height) {
+        std::vector<Vertex> verts;
+        std::vector<uint32_t> inds;
+        glm::vec4 cols[6] = {
+            glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+            glm::vec4(0.3f, 0.3f, 0.3f, 1.0f),
+            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+            glm::vec4(0.7f, 0.7f, 0.7f, 1.0f),
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f),
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        };
+        GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols);
+        this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
+        verts.clear();
+        inds.clear();
+        glm::vec4 cols_intersect[6] = {
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
+        };
+        GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols_intersect);
+        this->intersection_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
+        this->depth_tex = CreateDepthTexture(screen_width, screen_height);
+
+        this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, -3.0f)));
+        this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, 10.0f)));
+        this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(30.0f, 0.1f, 30.0f)), glm::vec3(0.0f, -0.05f, 0.0f)));
+        FastNoise fast_noise;
+        fast_noise.GetSimplex(1.0f, 1.0f);
+        float noise_texture_data[200*200];
+        for(uint32_t y = 0; y < 200; ++y) {
+            for(uint32_t x = 0; x < 200; ++x) {
+                float cx = 2000.0f / 200.0f * x;
+                float cy = 2000.0f / 200.0f * y;
+                noise_texture_data[y * 200 + x] = fast_noise.GetSimplex(cx, cy);
+            }
+        }
+        this->noise_texture = CreateTexture2D(noise_texture_data, 200, 200);
+
+        const BoundingBox& bb = this->intersection_mesh.bb;
+        this->data.max_extent = glm::length(bb.max - bb.min) / 2.0f;
+        this->data.center = {0.0f, 0.0f, 0.0f};
+    }
+    void Update(uint32_t screen_width, uint32_t screen_height) {
+        if(this->depth_tex.width != screen_width || this->depth_tex.height != screen_height) {
+            this->depth_tex = CreateDepthTexture(screen_width, screen_height);
+        }
+    }
+
+    void DrawScene(const BasicShader& shader, GLuint white_texture) const {
+        glBindTexture(GL_TEXTURE_2D, white_texture);
+        for(const glm::mat4& obj : objects) {
+            shader.SetModelMatrix(obj);
+            glBindVertexArray(this->cube_mesh.vao);
+            glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    void DrawIntoDepth(const BasicShader& shader, GLuint white_texture, const glm::mat4& view, const glm::mat4& proj) const {
+        this->depth_tex.Begin({});
+        shader.Bind();
+        shader.SetViewMatrix(view);
+        shader.SetProjectionMatrix(proj);
+        this->DrawScene(shader, white_texture);
+        this->depth_tex.End();
+    }
+    void DrawIntersectionMesh(const glm::mat4& view, const glm::mat4& proj, GLuint white_texture) {
+        data.timer += 1.0f / 60.0f;
+        static glm::vec3 translation = {0.2f, 0.0f, 0.0f};
+        translation.z += 1.0f / 100.0f;
+        if(translation.z > 15.0f) {
+            translation.z = -10.0f;
+        }
+        this->shader.SetData(data);
+        this->shader.Bind();
+        this->shader.SetProjectionMatrix(proj);
+        this->shader.SetViewMatrix(view);
+        this->shader.SetModelMatrix(glm::translate(glm::identity<glm::mat4>(), translation));
+        this->shader.SetColorTexture(this->noise_texture.id);
+        this->shader.SetDepthTexture(this->depth_tex.depthbuffer_id);
+        this->shader.SetScreenSize((float)this->depth_tex.width, (float)this->depth_tex.height);
+        glBindVertexArray(this->intersection_mesh.vao);
+        glDrawElements(GL_TRIANGLES, this->intersection_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+    }
+
+    ~IntersectionCubeScene() {
+    }
+    IntersectionHightlightingShader::Data data;
+    IntersectionHightlightingShader shader;
+    std::vector<glm::mat4> objects;
+    RenderTexture depth_tex;
+    Texture2D noise_texture;
+    Mesh cube_mesh;
+    Mesh intersection_mesh;
+};
+
+
+
 static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
 
 }
 
+enum CurrentActiveScene {
+    CS_RaytraceCubeScene,
+    CS_IntersectionCubeScene,
+};
+static CurrentActiveScene active_scene = CS_IntersectionCubeScene;
 
 int main() {
     if(!glfwInit()) {
@@ -212,8 +303,10 @@ int main() {
     }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+    int win_width = 800;
+    int win_height = 600;
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Graphics", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(win_width, win_height, "Graphics", nullptr, nullptr);
     if(!window) {
         std::cout << "failed to create window" << std::endl;
         return -1;
@@ -245,12 +338,35 @@ int main() {
     uint32_t col_white = 0xFFFFFFFF;
     Texture2D white_texture = CreateTexture2D(&col_white, 1, 1);
 
-    CubeScene cube_scene;
+
+    Texture2D hdr_map;
+    {
+        int x,y,c;
+        float* hdr_data = stbi_loadf("../assets/garden.hdr", &x, &y, &c, 4);
+        if(hdr_data) {
+            // The sun is just WAAAY to bright in the hdr image,
+            // and only a few rays hit it, but the ones that do get a absurdly high value assigned
+            // and stay that way so it doesn't really converge nicely
+            // (well it would if i took millions of samples, but that takes to long)
+            for(size_t i = 0; i < x * y * c; ++i) {
+                if(hdr_data[i] > 1.0f) {
+                    hdr_data[i] = 1.0f;
+                }
+            }
+            hdr_map = CreateTexture2D((const glm::vec4*)hdr_data, x, y);
+            stbi_image_free(hdr_data);
+        }
+    }
+    RaytraceCubeScene cube_scene(&hdr_map);
+    IntersectionCubeScene intersect_cube_scene(win_width, win_height);
 
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_CULL_FACE);
+    //glDisable(GL_CULL_FACE);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
 
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -259,7 +375,6 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        int win_width, win_height = 0;
         glfwGetWindowSize(window, &win_width, &win_height);
         glm::vec2 win_size = {static_cast<float>(win_width), static_cast<float>(win_height)};
         proj = glm::perspective(glm::radians(45.0f), win_size.x / win_size.y, 0.01f, 100.0f);
@@ -330,27 +445,58 @@ int main() {
 
         view = glm::lookAt(cam_pos, center, glm::vec3(0.0, 1.0, 0.0));  
 
+        if(active_scene == CS_IntersectionCubeScene) {
+            glActiveTexture(GL_TEXTURE0);
 
-        glViewport(0, 0, win_width, win_height);
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        glClearDepthf(1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            intersect_cube_scene.Update(win_width, win_height);
+            intersect_cube_scene.DrawIntoDepth(basic_shader, white_texture.id, view, proj);
 
-        glDepthMask(GL_FALSE);
-        DrawHDR(cube_scene.hdr_map, view);
-        glDepthMask(GL_TRUE);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, win_width, win_height);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClearDepthf(1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+            DrawHDR(hdr_map, view);
+            glDepthMask(GL_TRUE);
+            glEnable(GL_DEPTH_TEST);
 
-        basic_shader.Bind();
-        basic_shader.SetViewMatrix(view);
-        basic_shader.SetProjectionMatrix(proj);
+            basic_shader.Bind();
+            basic_shader.SetViewMatrix(view);
+            basic_shader.SetProjectionMatrix(proj);
 
-        cube_scene.Draw(view, basic_shader, white_texture.id);
+            intersect_cube_scene.DrawScene(basic_shader, white_texture.id);
+
+            glDepthMask(GL_FALSE);
+            glDisable(GL_CULL_FACE);
+            intersect_cube_scene.DrawIntersectionMesh(view, proj, white_texture.id);
+            glEnable(GL_CULL_FACE);
+            glDepthMask(GL_TRUE);
+        }
+        else if(active_scene == CS_RaytraceCubeScene) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, win_width, win_height);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClearDepthf(1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            glDepthMask(GL_FALSE);
+            DrawHDR(hdr_map, view);
+            glDepthMask(GL_TRUE);
+
+            glEnable(GL_DEPTH_TEST);
+
+            basic_shader.Bind();
+            basic_shader.SetViewMatrix(view);
+            basic_shader.SetProjectionMatrix(proj);
+
+            cube_scene.Draw(view, basic_shader, white_texture.id);
+
+            glBindVertexArray(0);
+        }
 
 
-
-        glBindVertexArray(0);
 
 
         ImGui::Render();
