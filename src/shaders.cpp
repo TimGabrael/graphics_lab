@@ -2,7 +2,7 @@
 #include <iostream>
 
 BasicShader::BasicShader() {
-    this->program = LoadProgramFromFile("../assets/shaders/basic.vs", "../assets/shaders/basic.fs");
+    this->program = LoadProgramFromFile("../../assets/shaders/basic.vs", "../../assets/shaders/basic.fs");
     this->model_loc = glGetUniformLocation(this->program, "model");
     this->view_loc = glGetUniformLocation(this->program, "view");
     this->proj_loc = glGetUniformLocation(this->program, "projection");
@@ -26,7 +26,7 @@ void BasicShader::SetTexture(GLuint id) const {
     glBindTexture(GL_TEXTURE_2D, id);
 }
 IntersectionHightlightingShader::IntersectionHightlightingShader() {
-    this->program = LoadProgramFromFile("../assets/shaders/basic.vs", "../../assets/shaders/intersection.fs");
+    this->program = LoadProgramFromFile("../../assets/shaders/basic.vs", "../../assets/shaders/intersection.fs");
     glUseProgram(this->program);
     this->model_loc = glGetUniformLocation(this->program, "model");
     this->view_loc = glGetUniformLocation(this->program, "view");

@@ -202,12 +202,12 @@ struct IntersectionCubeScene {
         verts.clear();
         inds.clear();
         glm::vec4 cols_intersect[6] = {
-            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
-            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
-            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
-            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
-            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
-            glm::vec4(0.6f, 0.6f, 0.8f, 0.6f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.2f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.2f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.2f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.2f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.2f),
+            glm::vec4(0.6f, 0.6f, 0.8f, 0.2f),
         };
         GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols_intersect);
         this->intersection_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
@@ -342,7 +342,7 @@ int main() {
     Texture2D hdr_map;
     {
         int x,y,c;
-        float* hdr_data = stbi_loadf("../assets/garden.hdr", &x, &y, &c, 4);
+        float* hdr_data = stbi_loadf("../../assets/garden.hdr", &x, &y, &c, 4);
         if(hdr_data) {
             // The sun is just WAAAY to bright in the hdr image,
             // and only a few rays hit it, but the ones that do get a absurdly high value assigned
@@ -455,7 +455,7 @@ int main() {
             glViewport(0, 0, win_width, win_height);
             glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             glClearDepthf(1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
             glDepthMask(GL_FALSE);
             DrawHDR(hdr_map, view);
@@ -479,7 +479,7 @@ int main() {
             glViewport(0, 0, win_width, win_height);
             glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             glClearDepthf(1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
             glDepthMask(GL_FALSE);
             DrawHDR(hdr_map, view);
