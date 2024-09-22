@@ -9,6 +9,7 @@
 #include "stb_image_write.h"
 #include "shaders.h"
 #include "atlas.h"
+#include "utf8.h"
 
 
 
@@ -371,10 +372,12 @@ int main() {
 
     FontAtlasData font_data;
     Texture2D test_texture;
-    if(font_data.Load(test_texture, "../../assets/consola.ttf", 12, false)) {
+    //if(font_data.Load(test_texture, "../../assets/consola.ttf", 16, false)) {
+    if(font_data.Load(test_texture, "../../assets/seguiemj.ttf", 16, false)) {
         std::cout << "successfully loaded" << std::endl;
         std::cout << test_texture.width << ", " << test_texture.height << std::endl;
     }
+    std::string utf8_char = "\xf0\x9f\x95\xb5\xef\xb8\x8f\xe2\x80\x8d\xe2\x99\x80\xef\xb8\x8f";
 
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -505,9 +508,39 @@ int main() {
         }
 
         ImDrawList* draw_list = ImGui::GetForegroundDrawList();
-        draw_list->AddRectFilled({0.0f, 0.0f}, {800.0f, 800.0f}, IM_COL32_WHITE);
+        draw_list->AddRectFilled({0.0f, 0.0f}, {800.0f, 800.0f}, IM_COL32_BLACK);
         static std::string test_string = "Suppenhuhn ist der Meister des Waldes!";
-        glm::vec2 start = {100.0f, 100.0f};
+        glm::vec2 start = {000.0f, 100.0f};
+        auto begin = utf8_char.begin();
+        auto end = utf8_char.end();
+        float last_advance = 0.0f;
+        for(uint32_t unicode = 0; begin != end;) {
+            unicode = utf8::next(begin, end);
+            if(unicode == ' ') {
+                start.x += 12;
+                continue;
+            }
+            FontAtlasData::Glyph* glyph = nullptr;
+            for(auto& g : font_data.glyphs) {
+                if(g.unicode == unicode) {
+                    glyph = &g;
+                    break;
+                }
+            }
+            if(!glyph) {
+                //std::cout << "not found: " << std::hex << unicode << std::endl;
+                continue;
+            }
+            if(0x300 <= unicode && unicode < 0x370) {
+                start.x -= last_advance;
+            }
+            glm::vec2 relative_start = glyph->start + start;
+            glm::vec2 relative_end = relative_start + glyph->size;
+            draw_list->AddImage((ImTextureID)test_texture.id, {relative_start.x, relative_start.y}, {relative_end.x, relative_end.y}, {glyph->start_uv.x, glyph->start_uv.y}, {glyph->end_uv.x, glyph->end_uv.y}, IM_COL32_WHITE);
+            start.x += glyph->advance;
+            last_advance = glyph->advance;
+            
+        }
         for(char c : test_string) {
             if(c == ' ') {
                 start.x += 12;
@@ -525,13 +558,13 @@ int main() {
             glm::vec2 relative_start = glyph->start + start;
             glm::vec2 relative_end = relative_start + glyph->size;
             
-            draw_list->AddImage((ImTextureID)test_texture.id, {relative_start.x, relative_start.y}, {relative_end.x, relative_end.y}, {glyph->start_uv.x, glyph->start_uv.y}, {glyph->end_uv.x, glyph->end_uv.y}, IM_COL32_BLACK);
+            draw_list->AddImage((ImTextureID)test_texture.id, {relative_start.x, relative_start.y}, {relative_end.x, relative_end.y}, {glyph->start_uv.x, glyph->start_uv.y}, {glyph->end_uv.x, glyph->end_uv.y}, IM_COL32_WHITE);
             start.x += glyph->advance;
         }
 
-        //ImGui::Begin("test_window");
-        //ImGui::Image((ImTextureID)test_texture.id, {(float)test_texture.width, (float)test_texture.height});
-        //ImGui::End();
+        ImGui::Begin("test_window");
+        ImGui::Image((ImTextureID)test_texture.id, {(float)test_texture.width, (float)test_texture.height});
+        ImGui::End();
 
 
         ImGui::Render();

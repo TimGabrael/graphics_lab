@@ -23,20 +23,37 @@ bool FontAtlasData::Load(Texture2D& tex, const std::string& font_file, int size,
     }
     FT_Library_SetLcdFilter(library, FT_LCD_FILTER_DEFAULT);
     FT_Set_Pixel_Sizes(face, 0, size);
+    constexpr size_t unicode_count = 0x1FFFF;
+    constexpr int32_t PADDING = 1;
+    constexpr float PADDING_F = static_cast<float>(PADDING);
 
-    uint32_t val = (uint32_t)(size * sqrt(255));
+    size_t available_count = 0;
+    for(size_t i = 0; i < unicode_count; ++i) {
+        FT_UInt char_idx = FT_Get_Char_Index(face, i);
+        if(char_idx == 0) {
+            continue;
+        }
+        available_count += 1;
+    }
+    std::cout << "available_count: " << available_count << std::endl;
+
+    uint32_t val = (uint32_t)((size + PADDING * 2) * sqrt(available_count));
     uint32_t num_nodes = 0x200; // 512 is the smallest possible size
     while(val >= num_nodes) {
         num_nodes <<= 1;
     }
-    uint32_t load_flags = subpixel ? FT_LOAD_TARGET_LCD : 0;
+    uint32_t load_flags = subpixel ? FT_LOAD_TARGET_LCD : FT_LOAD_COLOR;
 
     stbrp_context ctx;
     stbrp_node* nodes = new stbrp_node[num_nodes];
     stbrp_init_target(&ctx, num_nodes, num_nodes, nodes, num_nodes);
 
     std::vector<stbrp_rect> rects;
-    for(size_t i = 0; i < 255; ++i) {
+    for(size_t i = 0; i < unicode_count; ++i) {
+        FT_UInt char_idx = FT_Get_Char_Index(face, i);
+        if(char_idx == 0) {
+            continue;
+        }
         FT_Error err = FT_Load_Char(face, i, load_flags);
         if(err) {
             continue;
@@ -44,8 +61,8 @@ bool FontAtlasData::Load(Texture2D& tex, const std::string& font_file, int size,
         stbrp_rect rect;
         rect.x = 0;
         rect.y = 0;
-        rect.w = face->glyph->metrics.width / 64 + 2;
-        rect.h = face->glyph->metrics.height / 64 + 2;
+        rect.w = face->glyph->metrics.width / 64 + PADDING * 2;
+        rect.h = face->glyph->metrics.height / 64 + PADDING * 2;
         rect.id = i;
         rect.was_packed = false;
         rects.push_back(rect);
@@ -99,7 +116,7 @@ bool FontAtlasData::Load(Texture2D& tex, const std::string& font_file, int size,
                     uint8_t b = bitmap->buffer[y * bitmap->pitch + x + 2];
                     uint8_t a = std::max(std::max(r, g), b);
                     uint32_t col = r | (g << 8) | (b << 16) | (a << 24);
-                    uint32_t data_idx = (y + rects.at(i).y + 1) * ctx.width + (x / 3 + rects.at(i).x + 1);
+                    uint32_t data_idx = (y + rects.at(i).y + PADDING) * ctx.width + (x / 3 + rects.at(i).x + PADDING);
                     data[data_idx] = col;
                 }
             }
@@ -115,7 +132,7 @@ bool FontAtlasData::Load(Texture2D& tex, const std::string& font_file, int size,
                     uint8_t r = bitmap->buffer[y * bitmap->pitch + 4 * x + 2];
                     uint8_t a = bitmap->buffer[y * bitmap->pitch + 4 * x + 3];
                     uint32_t col = r | (g << 8) | (b << 16) | (a << 24);
-                    uint32_t data_idx = (y + rects.at(i).y + 1) * ctx.width + (x + rects.at(i).x + 1); 
+                    uint32_t data_idx = (y + rects.at(i).y + PADDING) * ctx.width + (x + rects.at(i).x + PADDING); 
                     data[data_idx] = col;
                 }
             }
@@ -131,7 +148,7 @@ bool FontAtlasData::Load(Texture2D& tex, const std::string& font_file, int size,
                     uint8_t g = 0xFF;
                     uint8_t b = 0xFF;
                     uint32_t col = r | (g << 8) | (b << 16) | (a << 24);
-                    uint32_t data_idx = (y + rects.at(i).y + 1) * ctx.width + (x + rects.at(i).x + 1);
+                    uint32_t data_idx = (y + rects.at(i).y + PADDING) * ctx.width + (x + rects.at(i).x + PADDING);
                     data[data_idx] = col;
                 }
             }
