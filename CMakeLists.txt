@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(lab)
 
+set(CMAKE_CXX_STANDARD 17)
 
 find_package(glm REQUIRED)
 find_package(glad REQUIRED)

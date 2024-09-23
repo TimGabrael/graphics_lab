@@ -97,9 +97,7 @@ bool FontAtlasData::Load(Texture2D& tex, const std::string& font_file, int size,
 
         const int32_t sx = metrics.horiBearingX / 64;
         const int32_t sy = metrics.horiBearingY / 64;
-        //glyph.start = {-0.5f + static_cast<float>(sx), (size + 0.5f) - static_cast<float>(sy)};
         glyph.start = {0.5f + static_cast<float>(sx), (size + 0.5f) - static_cast<float>(sy)};
-        //glyph.start = {0.5f, (size + 0.5f) - static_cast<float>(sy)};
         glyph.unicode = rects.at(i).id;
         this->glyphs.push_back(glyph);
 
