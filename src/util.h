@@ -147,7 +147,7 @@ void DestroyRenderTexture(RenderTexture* tex);
 GLuint LoadProgram(const char* vs, const char* fs);
 GLuint LoadProgramFromFile(const char* vs, const char* fs);
 
-void DrawHDR(const Texture2D& tex, const glm::mat4& view_matrix);
+void DrawHDR(const Texture2D& tex, const glm::mat4& proj_matrix, const glm::mat4& view_matrix);
 
 void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds);
 void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const glm::vec3& size, const glm::vec4 col[8]);

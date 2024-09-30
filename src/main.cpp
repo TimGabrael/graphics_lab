@@ -476,7 +476,7 @@ int main() {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
             glDepthMask(GL_FALSE);
-            DrawHDR(hdr_map, view);
+            DrawHDR(hdr_map, proj, view);
             glDepthMask(GL_TRUE);
             glEnable(GL_DEPTH_TEST);
 
@@ -500,7 +500,7 @@ int main() {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
             glDepthMask(GL_FALSE);
-            DrawHDR(hdr_map, view);
+            DrawHDR(hdr_map, proj, view);
             glDepthMask(GL_TRUE);
 
             glEnable(GL_DEPTH_TEST);
@@ -514,7 +514,7 @@ int main() {
             glBindVertexArray(0);
         }
 
-        if(true) { // nice looking text
+        if(false) { // nice looking text
             ImDrawList* draw_list = ImGui::GetForegroundDrawList();
             draw_list->AddRectFilled({0.0f, 0.0f}, {800.0f, 800.0f}, IM_COL32_WHITE);
             glm::vec2 start = {000.0f, 100.0f};

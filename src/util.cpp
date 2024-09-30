@@ -519,11 +519,12 @@ GLuint LoadProgramFromFile(const char* vs, const char* fs) {
     return LoadProgram(vs_source.c_str(), fs_source.c_str());
 }
 
-void DrawHDR(const Texture2D& tex, const glm::mat4& view_matrix) {
+void DrawHDR(const Texture2D& tex, const glm::mat4& proj_matrix, const glm::mat4& view_matrix) {
     static GLuint hdr_program = INVALID_GL_HANDLE;
     static GLuint hdr_vao = INVALID_GL_HANDLE;
     static GLuint hdr_vbo = INVALID_GL_HANDLE;
-    static GLuint hdr_mat_loc = INVALID_GL_HANDLE;
+    static GLuint hdr_proj_mat_loc = INVALID_GL_HANDLE;
+    static GLuint hdr_view_mat_loc = INVALID_GL_HANDLE;
 
     if(hdr_program == INVALID_GL_HANDLE) {
         hdr_program = LoadProgramFromFile("../assets/shaders/environment.vs", "../assets/shaders/environment.fs");
@@ -544,13 +545,15 @@ void DrawHDR(const Texture2D& tex, const glm::mat4& view_matrix) {
         glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * ARRSIZE(positions), positions, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
-        hdr_mat_loc = glGetUniformLocation(hdr_program, "invViewMatrix");
+        hdr_proj_mat_loc = glGetUniformLocation(hdr_program, "invProjMatrix");
+        hdr_view_mat_loc = glGetUniformLocation(hdr_program, "viewMatrix");
     }
 
     glUseProgram(hdr_program);
     glBindVertexArray(hdr_vao);
-    const glm::mat4 inv_view_mat = glm::inverse(view_matrix);
-    glUniformMatrix4fv(hdr_mat_loc, 1, GL_FALSE, (const float*)&inv_view_mat);
+    const glm::mat4 inv_proj_mat = glm::inverse(proj_matrix);
+    glUniformMatrix4fv(hdr_proj_mat_loc, 1, GL_FALSE, (const float*)&inv_proj_mat);
+    glUniformMatrix4fv(hdr_view_mat_loc, 1, GL_FALSE, (const float*)&view_matrix);
 
     glBindTexture(GL_TEXTURE_2D, tex.id);
 
