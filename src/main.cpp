@@ -43,17 +43,6 @@ struct RaytraceCubeScene {
         ISize small_sz = sz;
         small_sz.width /= 5;
         small_sz.height /= 5;
-        int x,y,c;
-        stbi_uc* data = stbi_load("example_uvmesh_tris00.tga", &x, &y, &c, 4);
-        if(x > 0 && y > 0 && data) {
-            this->debug_texture = CreateTexture2D((const uint32_t*)data, x, y);
-            stbi_image_free(data);
-        }
-        else {
-            std::cout << "failed to load debug_texture" << std::endl;
-        }
-        
-
 
         this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
         cube_bvh.CreateFromMesh(&cube_mesh, 8);
@@ -289,7 +278,7 @@ struct IntersectionCubeScene {
     Mesh intersection_mesh;
 };
 struct DecimationScene {
-    DecimationScene(uint32_t screen_width, uint32_t screen_height) : decimate_mesh(LoadGLTFLoadData("../../assets/couch.glb")) {
+    DecimationScene(uint32_t screen_width, uint32_t screen_height) : decimate_mesh(LoadGLTFLoadData(TranslateRelativePath("../../assets/couch.glb").c_str())) {
         this->mesh_idx = 2;
         this->fast_dyn_mesh.Initialize(&decimate_mesh.meshes.at(this->mesh_idx).mesh);
     }
@@ -326,9 +315,11 @@ enum CurrentActiveScene {
     CS_IntersectionCubeScene,
     CS_DecimationScene,
 };
-static CurrentActiveScene active_scene = CS_DecimationScene;
+static CurrentActiveScene active_scene = CS_RaytraceCubeScene;
 
-int main() {
+int main(int argc, char** argv) {
+    SetExecutablePath(argv[0]);
+
     if(!glfwInit()) {
         std::cout << "failed to initialize glfw" << std::endl;
         return -1;
@@ -375,7 +366,7 @@ int main() {
     Texture2D hdr_map;
     {
         int x,y,c;
-        float* hdr_data = stbi_loadf("../../assets/garden.hdr", &x, &y, &c, 4);
+        float* hdr_data = stbi_loadf(TranslateRelativePath("../../assets/garden.hdr").c_str(), &x, &y, &c, 4);
         if(hdr_data) {
             // The sun is just WAAAY to bright in the hdr image,
             // and only a few rays hit it, but the ones that do get a absurdly high value assigned
@@ -405,7 +396,7 @@ int main() {
     Texture2D test_texture;
     int font_size = 16;
     //if(font_data.Load(test_texture, "../../assets/consola.ttf", font_size, false)) {
-    if(font_data.Load(test_texture, "../../assets/seguiemj.ttf", font_size, false)) {
+    if(font_data.Load(test_texture, TranslateRelativePath("../../assets/seguiemj.ttf"), font_size, false)) {
         std::cout << "successfully loaded: " << std::endl;
         std::cout << test_texture.width << ", " << test_texture.height << std::endl;
     }
@@ -545,10 +536,8 @@ int main() {
             glClearDepthf(1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-<<<<<<< Updated upstream
-=======
             glDepthMask(GL_FALSE);
-            DrawHDR(hdr_map, view);
+            DrawHDR(hdr_map, proj, view);
             glDepthMask(GL_TRUE);
 
             glEnable(GL_DEPTH_TEST);
@@ -562,7 +551,6 @@ int main() {
             glBindVertexArray(0);
         }
 
->>>>>>> Stashed changes
         if(false) { // nice looking text
             ImDrawList* draw_list = ImGui::GetForegroundDrawList();
             draw_list->AddRectFilled({0.0f, 0.0f}, {800.0f, 800.0f}, IM_COL32_WHITE);

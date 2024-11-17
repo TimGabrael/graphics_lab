@@ -154,6 +154,8 @@ void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const
 
 ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds);
 
+void SetExecutablePath(const char* path);
+std::string TranslateRelativePath(const std::string& path);
 
 
 

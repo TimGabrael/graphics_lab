@@ -2,7 +2,7 @@
 #include <iostream>
 
 BasicShader::BasicShader() {
-    this->program = LoadProgramFromFile("../../assets/shaders/basic.vs", "../../assets/shaders/basic.fs");
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/basic.vs").c_str(), TranslateRelativePath("../../assets/shaders/basic.fs").c_str());
     this->model_loc = glGetUniformLocation(this->program, "model");
     this->view_loc = glGetUniformLocation(this->program, "view");
     this->proj_loc = glGetUniformLocation(this->program, "projection");
@@ -26,7 +26,7 @@ void BasicShader::SetTexture(GLuint id) const {
     glBindTexture(GL_TEXTURE_2D, id);
 }
 IntersectionHightlightingShader::IntersectionHightlightingShader() {
-    this->program = LoadProgramFromFile("../../assets/shaders/basic.vs", "../../assets/shaders/intersection.fs");
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/basic.vs").c_str(), TranslateRelativePath("../../assets/shaders/intersection.fs").c_str());
     glUseProgram(this->program);
     this->model_loc = glGetUniformLocation(this->program, "model");
     this->view_loc = glGetUniformLocation(this->program, "view");
@@ -80,7 +80,7 @@ void IntersectionHightlightingShader::SetDepthTexture(GLuint id) const {
     glBindTexture(GL_TEXTURE_2D, id);
 }
 TriangleVisibilityShader::TriangleVisibilityShader() {
-    this->program = LoadProgramFromFile("../../assets/shaders/triangle_visibility.vs", "../../assets/shaders/triangle_visibility.fs");
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/triangle_visibility.vs").c_str(), TranslateRelativePath("../../assets/shaders/triangle_visibility.fs").c_str());
     glUseProgram(this->program);
     this->model_loc = glGetUniformLocation(this->program, "model");
     this->view_loc = glGetUniformLocation(this->program, "view");

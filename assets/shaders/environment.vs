@@ -8,7 +8,7 @@ uniform mat4 viewMatrix;
 out vec3 dir;
 
 void main() {
-    vec4 clip_space = vec4(aPos, 1.0, 1.0);
+    vec4 clip_space = vec4(aPos, 0.0, 1.0);
     vec4 view_dir_proj = invProjMatrix * clip_space;
     view_dir_proj /= view_dir_proj.w;
     vec3 view_dir = normalize(view_dir_proj.xyz) * mat3(viewMatrix);

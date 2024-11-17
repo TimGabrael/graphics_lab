@@ -527,7 +527,7 @@ void DrawHDR(const Texture2D& tex, const glm::mat4& proj_matrix, const glm::mat4
     static GLuint hdr_view_mat_loc = INVALID_GL_HANDLE;
 
     if(hdr_program == INVALID_GL_HANDLE) {
-        hdr_program = LoadProgramFromFile("../assets/shaders/environment.vs", "../assets/shaders/environment.fs");
+        hdr_program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/environment.vs").c_str(), TranslateRelativePath("../../assets/shaders/environment.fs").c_str());
 
         static glm::vec2 positions[] = {
             {-1.0f,  1.0f},
@@ -780,15 +780,15 @@ static void XAtlasDebugRender(const xatlas::Atlas* atlas) {
                 }
             }
         }
-        for (uint32_t i = 0; i < atlas->atlasCount; i++) {
-            char filename[256];
-            snprintf(filename, sizeof(filename), "example_uvmesh_tris%02u.tga", i);
-            printf("Writing '%s'...\n", filename);
-            stbi_write_tga(filename, atlas->width, atlas->height, 3, &outputTrisImage[i * imageDataSize]);
-            snprintf(filename, sizeof(filename), "example_uvmesh_charts%02u.tga", i);
-            printf("Writing '%s'...\n", filename);
-            stbi_write_tga(filename, atlas->width,atlas->height, 3, &outputChartsImage[i * imageDataSize]);
-        }
+        //for (uint32_t i = 0; i < atlas->atlasCount; i++) {
+        //    char filename[256];
+        //    snprintf(filename, sizeof(filename), "example_uvmesh_tris%02u.tga", i);
+        //    printf("Writing '%s'...\n", filename);
+        //    stbi_write_tga(filename, atlas->width, atlas->height, 3, &outputTrisImage[i * imageDataSize]);
+        //    snprintf(filename, sizeof(filename), "example_uvmesh_charts%02u.tga", i);
+        //    printf("Writing '%s'...\n", filename);
+        //    stbi_write_tga(filename, atlas->width,atlas->height, 3, &outputChartsImage[i * imageDataSize]);
+        //}
     }
 }
 
@@ -840,4 +840,27 @@ ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds)
     
     xatlas::Destroy(atlas);
     return {atlas->width, atlas->height};
+}
+static std::string EXECUTABLE_PATH;
+void SetExecutablePath(const char* path) {
+    EXECUTABLE_PATH = path;
+    const size_t last_backslash = EXECUTABLE_PATH.find_last_of('\\');
+    const size_t last_slash = EXECUTABLE_PATH.find_last_of('/');
+    if(last_slash != SIZE_MAX && last_backslash != SIZE_MAX) {
+        if(last_slash < last_backslash) {
+            EXECUTABLE_PATH = EXECUTABLE_PATH.substr(0, last_backslash + 1);
+        }
+        else {
+            EXECUTABLE_PATH = EXECUTABLE_PATH.substr(0, last_slash + 1);
+        }
+    }
+    else if(last_slash != SIZE_MAX) {
+        EXECUTABLE_PATH = EXECUTABLE_PATH.substr(0, last_slash + 1);
+    }
+    else if(last_backslash != SIZE_MAX) {
+        EXECUTABLE_PATH = EXECUTABLE_PATH.substr(0, last_backslash + 1);
+    }
+}
+std::string TranslateRelativePath(const std::string& path) {
+    return EXECUTABLE_PATH + path;
 }
