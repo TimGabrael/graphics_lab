@@ -152,7 +152,7 @@ void DrawHDR(const Texture2D& tex, const glm::mat4& proj_matrix, const glm::mat4
 void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds);
 void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const glm::vec3& size, const glm::vec4 col[8]);
 
-ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds);
+ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds, uint32_t max_resolution);
 
 void SetExecutablePath(const char* path);
 std::string TranslateRelativePath(const std::string& path);

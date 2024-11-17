@@ -16,8 +16,10 @@
 
 struct RaytraceCubeScene {
     RaytraceCubeScene(const Texture2D* hdr_map) {
-        std::vector<Vertex> verts;
-        std::vector<uint32_t> inds;
+        std::vector<Vertex> small_verts;
+        std::vector<uint32_t> small_inds;
+        std::vector<Vertex> large_verts;
+        std::vector<uint32_t> large_inds;
         const glm::vec4 cols[6] = {
             {1.0f, 0.0f, 1.0f, 1.0f},
             {0.0f, 1.0f, 0.0f, 1.0f},
@@ -25,29 +27,20 @@ struct RaytraceCubeScene {
             {0.0f, 0.0f, 1.0f, 1.0f},
             {1.0f, 1.0f, 1.0f, 1.0f},
             {0.0f, 1.0f, 1.0f, 1.0f},
-
-
-            //{1.0f, 1.0f, 1.0f, 1.0f},
-            //{1.0f, 1.0f, 1.0f, 1.0f},
-            //{1.0f, 1.0f, 1.0f, 1.0f},
-            //{1.0f, 1.0f, 1.0f, 1.0f},
-            //{1.0f, 1.0f, 1.0f, 1.0f},
-            //{1.0f, 1.0f, 1.0f, 1.0f},
-
         };
-        GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols);
-        ISize sz = GenerateUVs(verts, inds);
-        sz.width /= 5;
-        sz.height /= 5;
-        this->post_processing = RayImage(sz.width, sz.height);
-        ISize small_sz = sz;
-        small_sz.width /= 5;
-        small_sz.height /= 5;
+        GenerateCube(small_verts, small_inds, {1.0f, 1.0f, 1.0f}, cols);
+        GenerateCube(large_verts, large_inds, {30.0f, 0.1f, 30.0f}, cols);
 
-        this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
-        cube_bvh.CreateFromMesh(&cube_mesh, 8);
+        ISize small_sz = GenerateUVs(small_verts, small_inds, 64);
+        ISize large_sz = GenerateUVs(large_verts, large_inds, 64);
+        this->post_processing = RayImage(glm::max(large_sz.width, small_sz.width), glm::max(large_sz.height, small_sz.height));
+
+        this->small_cube_mesh = CreateMesh(small_verts.data(), small_inds.data(), small_verts.size(), small_inds.size());
+        this->large_cube_mesh = CreateMesh(large_verts.data(), large_inds.data(), large_verts.size(), large_inds.size());
+        small_cube_bvh.CreateFromMesh(&small_cube_mesh, 8);
+        large_cube_bvh.CreateFromMesh(&large_cube_mesh, 8);
         RayObject obj = {};
-        obj.bvh = &this->cube_bvh;
+        obj.bvh = &this->small_cube_bvh;
         this->image = RayImage(this->width, this->height);
 
         // create the scene
@@ -74,7 +67,8 @@ struct RaytraceCubeScene {
         this->lit_objects.push_back({RayImage(small_sz.width, small_sz.height), 1});
 
 
-        mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(30.0f, 0.1f, 30.0f)), glm::vec3(0.0f, -0.05f, 0.0f));
+        mat = glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, -0.05f, 0.0f));
+        obj.bvh = &this->large_cube_bvh;
         obj.mat = mat;
         obj.inv_model_mat = glm::inverse(mat);
         obj.material.specular_col = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -83,7 +77,7 @@ struct RaytraceCubeScene {
         obj.material.smoothness = 0.0f;
         obj.material.specular_probability = 0.0f;
         this->ray_scene.objects.emplace_back(std::move(obj));
-        this->lit_objects.push_back({RayImage(sz.width, sz.height), 2});
+        this->lit_objects.push_back({RayImage(large_sz.width, large_sz.height), 2});
 
         this->ray_scene.hdr_map = hdr_map;
 
@@ -128,8 +122,14 @@ struct RaytraceCubeScene {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cur_sample_mode);
             glm::mat4 mat = glm::inverse(obj.inv_model_mat);
             basic_shader.SetModelMatrix(mat);
-            glBindVertexArray(this->cube_mesh.vao);
-            glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+            if(obj.bvh == &this->small_cube_bvh) {
+                glBindVertexArray(this->small_cube_mesh.vao);
+                glDrawElements(GL_TRIANGLES, this->small_cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+            }
+            else {
+                glBindVertexArray(this->large_cube_mesh.vao);
+                glDrawElements(GL_TRIANGLES, this->large_cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+            }
             cur_obj_idx += 1;
         }
 
@@ -164,12 +164,14 @@ struct RaytraceCubeScene {
     std::vector<Texture2D> ray_textures;
     Texture2D debug_texture;
     RayScene ray_scene;
-    BoundingVolumeHierarchy cube_bvh;
+    BoundingVolumeHierarchy small_cube_bvh;
+    BoundingVolumeHierarchy large_cube_bvh;
     RayImage image;
     uint32_t width = 100;
     uint32_t height = 100;
     Texture2D tex;
-    Mesh cube_mesh;
+    Mesh small_cube_mesh;
+    Mesh large_cube_mesh;
     bool redraw = true;
     bool always_draw = false;
     bool draw_illuminance = false;

@@ -792,7 +792,7 @@ static void XAtlasDebugRender(const xatlas::Atlas* atlas) {
     }
 }
 
-ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds) {
+ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds, uint32_t max_resolution) {
     if(verts.empty()) {
         return {0, 0};
     }
@@ -816,6 +816,7 @@ ISize GenerateUVs(std::vector<Vertex>& verts, const std::vector<uint32_t>& inds)
         return {0, 0};
     }
     xatlas::PackOptions options;
+    options.resolution = max_resolution;
     options.padding = 4;
     xatlas::Generate(atlas, xatlas::ChartOptions(), options);
     
