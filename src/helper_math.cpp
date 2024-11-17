@@ -61,6 +61,12 @@ float GetRandomFloat(float start, float end) {
     std::uniform_real_distribution<float> dist(start, end);
     return dist(ran);
 }
+uint32_t GetRandomUint32(uint32_t start, uint32_t end) {
+    static std::random_device device;
+    static std::mt19937 ran(device());
+    std::uniform_int_distribution<uint32_t> dist(start, end);
+    return dist(ran);
+}
 glm::vec3 GetRandomNormalizedVector() {
     static std::random_device device;
     static std::mt19937 ran(device());

@@ -16,6 +16,8 @@ uint32_t ConvertColor(const glm::vec4& col);
 
 // [start, end]
 float GetRandomFloat(float start, float end);
+// [start, end]
+uint32_t GetRandomUint32(uint32_t start, uint32_t end);
 glm::vec3 GetRandomNormalizedVector();
 
 

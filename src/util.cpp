@@ -426,6 +426,36 @@ RenderTexture CreateDepthTexture(uint32_t width, uint32_t height) {
     }
     return tex;
 }
+RenderTexture CreateRenderTexture(uint32_t width, uint32_t height) {
+    RenderTexture tex;
+    tex.width = width;
+    tex.height = height;
+    glGenFramebuffers(1, &tex.framebuffer_id);
+    glBindFramebuffer(GL_FRAMEBUFFER, tex.framebuffer_id);
+
+    glGenTextures(1, &tex.colorbuffer_ids[0]);
+    glBindTexture(GL_TEXTURE_2D, tex.colorbuffer_ids[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA4, width, height, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glGenTextures(1, &tex.depthbuffer_id);
+    glBindTexture(GL_TEXTURE_2D, tex.depthbuffer_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex.depthbuffer_id, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex.colorbuffer_ids[0], 0);
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "failed to create Framebuffer in: CreateRenderTexture" << std::endl;
+        Sleep(10000);
+        DestroyRenderTexture(&tex);
+    }
+    return tex;
+}
 void DestroyRenderTexture(RenderTexture* tex) {
     if(tex->framebuffer_id != INVALID_GL_HANDLE) {
         glDeleteFramebuffers(1, &tex->framebuffer_id);

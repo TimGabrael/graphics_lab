@@ -141,6 +141,7 @@ Texture2D CreateTexture2D(const float* data, uint32_t width, uint32_t height);
 void DestroyTexture2D(Texture2D* tex);
 
 RenderTexture CreateDepthTexture(uint32_t width, uint32_t height);
+RenderTexture CreateRenderTexture(uint32_t width, uint32_t height);
 void DestroyRenderTexture(RenderTexture* tex);
 
 

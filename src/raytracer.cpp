@@ -208,7 +208,7 @@ void BoundingVolumeHierarchy::Destroy() {
     }
 }
 static RayHitResult RayBoundingVolumeHierarchyTest(const Ray& ray, const BoundingVolumeHierarchy& bvh) {
-    static std::vector<const BVHNode*> node_stack;
+    std::vector<const BVHNode*> node_stack;
     RayHitResult hit_result = {};
     hit_result.hit = false;
     hit_result.length = INFINITY;
@@ -247,13 +247,11 @@ static RayHitResult RayBoundingVolumeHierarchyTest(const Ray& ray, const Boundin
                     }
                 }
                 if(hit_result.hit) {
-                    node_stack.clear();
                     return hit_result;
                 }
             }
         }
     }
-    node_stack.clear();
     return hit_result;
 }
 
@@ -529,8 +527,8 @@ void RayTraceMapper(LitObject& lit, const RayScene& scene, uint32_t max_bounces,
         const float step_y = 1.0f / (float)(num_steps.y - 1) * vsize.y;
         
         const float inv_signed_area = 1.0f / CalcSignedTriangleArea(trig.v1.uv, trig.v2.uv, trig.v3.uv);
-        for(int y = 0; y <= num_steps.y; ++y) {
-            for(int x = 0; x <= num_steps.x; ++x) {
+        for(int y = -1; y <= num_steps.y + 1; ++y) {
+            for(int x = -1; x <= num_steps.x + 1; ++x) {
                 for(uint32_t k = 0; k < sample_count; ++k) {
                     const float sx = step_x * ((float)(x - 1) + GetRandomFloat(-0.5f, 0.5f));
                     const float sy = step_y * ((float)(y - 1) + GetRandomFloat(-0.5f, 0.5f));
