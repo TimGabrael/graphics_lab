@@ -79,3 +79,25 @@ void IntersectionHightlightingShader::SetDepthTexture(GLuint id) const {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, id);
 }
+TriangleVisibilityShader::TriangleVisibilityShader() {
+    this->program = LoadProgramFromFile("../../assets/shaders/triangle_visibility.vs", "../../assets/shaders/triangle_visibility.fs");
+    glUseProgram(this->program);
+    this->model_loc = glGetUniformLocation(this->program, "model");
+    this->view_loc = glGetUniformLocation(this->program, "view");
+    this->proj_loc = glGetUniformLocation(this->program, "projection");
+}
+TriangleVisibilityShader::~TriangleVisibilityShader() {
+    glDeleteProgram(this->program);
+}
+void TriangleVisibilityShader::Bind() const {
+    glUseProgram(this->program);
+}
+void TriangleVisibilityShader::SetModelMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->model_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void TriangleVisibilityShader::SetViewMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->view_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void TriangleVisibilityShader::SetProjectionMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->proj_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}

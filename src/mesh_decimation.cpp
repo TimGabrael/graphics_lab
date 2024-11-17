@@ -4,6 +4,97 @@
 #include <iostream>
 #include <algorithm>
 
+void FastDynamicMesh::Initialize(Mesh* underlying_mesh) {
+    this->mesh = underlying_mesh;
+    this->triangles.resize(this->mesh->triangle_count);
+    for(uint32_t i = 0; i < this->mesh->triangle_count; ++i) {
+        const uint32_t idx1 = this->mesh->inds[3 * i + 0];
+        const uint32_t idx2 = this->mesh->inds[3 * i + 1];
+        const uint32_t idx3 = this->mesh->inds[3 * i + 2];
+        bool edge12_exists = false;
+        bool edge13_exists = false;
+        bool edge23_exists = false;
+        for(size_t j = 0; j < this->edges.size(); ++j) {
+            if((idx1 == this->edges.at(j).vtx_1 || idx1 == this->edges.at(j).vtx_2) && (idx2 == this->edges.at(j).vtx_1 || idx2 == this->edges.at(j).vtx_2)) {
+                edge12_exists = true;
+            }
+            if((idx1 == this->edges.at(j).vtx_1 || idx1 == this->edges.at(j).vtx_2) && (idx3 == this->edges.at(j).vtx_1 || idx3 == this->edges.at(j).vtx_2)) {
+                edge13_exists = true;   
+            }
+            if((idx2 == this->edges.at(j).vtx_1 || idx2 == this->edges.at(j).vtx_2) && (idx3 == this->edges.at(j).vtx_1 || idx3 == this->edges.at(j).vtx_2)) {
+                edge23_exists = true;   
+            }
+            if(edge12_exists && edge13_exists && edge23_exists) {
+                break;
+            }
+        }
+        const glm::vec3 p1 = this->mesh->verts[idx1].pos;
+        const glm::vec3 p2 = this->mesh->verts[idx2].pos;
+        const glm::vec3 p3 = this->mesh->verts[idx3].pos;
+        if(!edge12_exists) {
+            EdgeData edge12 = {};
+            edge12.vtx_1 = idx1;
+            edge12.vtx_2 = idx2;
+            edge12.len = glm::length(p2 - p1);
+            this->edges.push_back(edge12);
+        }
+        if(!edge13_exists) {
+            EdgeData edge13 = {};
+            edge13.vtx_1 = idx1;
+            edge13.vtx_2 = idx3;
+            edge13.len = glm::length(p3 - p1);
+            this->edges.push_back(edge13);
+        }
+        if(!edge23_exists) {
+            EdgeData edge23 = {};
+            edge23.vtx_1 = idx2;
+            edge23.vtx_2 = idx3;
+            edge23.len = glm::length(p3 - p2);
+            this->edges.push_back(edge23);
+        }
+        for(uint32_t j = 0; j < this->mesh->triangle_count; ++j) {
+            if(j == i) {
+                continue;
+            }
+            const uint32_t nidx1 = this->mesh->inds[3 * j + 0];
+            const uint32_t nidx2 = this->mesh->inds[3 * j + 1];
+            const uint32_t nidx3 = this->mesh->inds[3 * j + 2];
+
+            if(nidx1 == idx1 || nidx2 == idx1 || nidx3 == idx1) {
+                if(nidx1 == idx2 || nidx2 == idx2 || nidx3 == idx2) {
+                    this->triangles[i].neighbour_12 = j;
+                }
+                else if(nidx1 == idx3 || nidx2 == idx3 || nidx3 == idx3) {
+                    this->triangles[i].neighbour_13 = j;
+                }
+            }
+            else if(nidx1 == idx2 || nidx2 == idx2 || nidx3 == idx2) {
+                if(nidx1 == idx3 || nidx2 == idx3 || nidx3 == idx3) {
+                    this->triangles[i].neighbour_23 = j;
+                }
+            }
+        }
+        this->triangles[i].vtx_1 = idx1;
+        this->triangles[i].vtx_2 = idx2;
+        this->triangles[i].vtx_3 = idx3;
+        this->triangles[i].area = CalcTriangleArea(p1, p2, p3);
+    }
+    this->vertex_data.resize(this->mesh->vertex_count);
+    for(uint32_t i = 0; i < this->mesh->vertex_count; ++i) {
+        for(size_t j = 0; j < this->triangles.size(); ++j) {
+            const TriangleData& trig = this->triangles.at(j);
+            if(trig.vtx_1 == i || trig.vtx_2 == i || trig.vtx_3 == i) {
+                this->vertex_data[i].triangles.push_back(j);
+            }
+        }
+        for(size_t j = 0; j < this->edges.size(); ++j) {
+            const EdgeData& edge = this->edges.at(j);
+            if(edge.vtx_1 == i || edge.vtx_2 == i) {
+                this->vertex_data[i].edges.push_back(j);
+            }
+        }
+    }
+}
 glm::vec2 GetMeshMinMaxTrianglesSizes(const Mesh* input) {
     float min_trig_area = FLT_MAX;
     float max_trig_area = -FLT_MAX;

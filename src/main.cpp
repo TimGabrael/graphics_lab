@@ -188,6 +188,8 @@ struct RaytraceCubeScene {
 };
 
 
+
+
 struct IntersectionCubeScene {
     IntersectionCubeScene(uint32_t screen_width, uint32_t screen_height) {
         std::vector<Vertex> verts;
@@ -286,6 +288,28 @@ struct IntersectionCubeScene {
     Mesh cube_mesh;
     Mesh intersection_mesh;
 };
+struct DecimationScene {
+    DecimationScene(uint32_t screen_width, uint32_t screen_height) : decimate_mesh(LoadGLTFLoadData("../../assets/couch.glb")) {
+        this->mesh_idx = 2;
+        this->fast_dyn_mesh.Initialize(&decimate_mesh.meshes.at(this->mesh_idx).mesh);
+    }
+    void DrawScene(const BasicShader& shader, GLuint white_texture, const glm::mat4& view_mat, const glm::mat4& proj_mat) const {
+        const GLTFLoadData::GltfMesh& mesh = this->decimate_mesh.meshes.at(this->mesh_idx);
+        trig_vis_shader.Bind();
+        trig_vis_shader.SetModelMatrix(glm::mat4(1.0f));
+        trig_vis_shader.SetViewMatrix(view_mat);
+        trig_vis_shader.SetProjectionMatrix(proj_mat);
+        glBindVertexArray(mesh.mesh.vao);
+        glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+    }
+
+    ~DecimationScene() {
+    }
+    TriangleVisibilityShader trig_vis_shader;
+    FastDynamicMesh fast_dyn_mesh;
+    uint32_t mesh_idx = 2;
+    GLTFLoadData decimate_mesh;
+};
 
 
 
@@ -300,8 +324,9 @@ static void CharacterCallback(GLFWwindow* window, unsigned int codepoint) {
 enum CurrentActiveScene {
     CS_RaytraceCubeScene,
     CS_IntersectionCubeScene,
+    CS_DecimationScene,
 };
-static CurrentActiveScene active_scene = CS_IntersectionCubeScene;
+static CurrentActiveScene active_scene = CS_DecimationScene;
 
 int main() {
     if(!glfwInit()) {
@@ -367,7 +392,7 @@ int main() {
     }
     RaytraceCubeScene cube_scene(&hdr_map);
     IntersectionCubeScene intersect_cube_scene(win_width, win_height);
-
+    DecimationScene decimation_scene(win_width, win_height);
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -513,7 +538,31 @@ int main() {
 
             glBindVertexArray(0);
         }
+        else if(active_scene == CS_DecimationScene) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, win_width, win_height);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClearDepthf(1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
+<<<<<<< Updated upstream
+=======
+            glDepthMask(GL_FALSE);
+            DrawHDR(hdr_map, view);
+            glDepthMask(GL_TRUE);
+
+            glEnable(GL_DEPTH_TEST);
+
+            basic_shader.Bind();
+            basic_shader.SetViewMatrix(view);
+            basic_shader.SetProjectionMatrix(proj);
+
+            decimation_scene.DrawScene(basic_shader, white_texture.id, view, proj);
+
+            glBindVertexArray(0);
+        }
+
+>>>>>>> Stashed changes
         if(false) { // nice looking text
             ImDrawList* draw_list = ImGui::GetForegroundDrawList();
             draw_list->AddRectFilled({0.0f, 0.0f}, {800.0f, 800.0f}, IM_COL32_WHITE);
