@@ -71,6 +71,9 @@ struct VolumetricFogShader {
     struct FogData {
         glm::vec4 center_and_radius; // glm::vec3 center, float radius (w)
         glm::vec4 color;
+        float iTime = 0.0f;
+        int iFrame = 0;
+        float padding_1 = 0.0f;
     };
     VolumetricFogShader();
     ~VolumetricFogShader();

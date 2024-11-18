@@ -431,6 +431,11 @@ struct VolumetricFog : public Scene {
         verts.clear();
         inds.clear();
 
+        fog_data.color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        fog_data.iTime = 0.0f;
+        fog_data.center_and_radius = glm::vec4(0.0f, 0.0f, 0.0f, 2.0f);
+        fog_data.iFrame = 0;
+
         this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, -3.0f)));
         this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, 10.0f)));
         this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(30.0f, 0.1f, 30.0f)), glm::vec3(0.0f, -0.05f, 0.0f)));
@@ -438,6 +443,8 @@ struct VolumetricFog : public Scene {
     ~VolumetricFog() {
     }
     virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
+        fog_data.iTime += 1.0f / 60.0f; // dt
+        fog_data.iFrame += 1;
         glBindFramebuffer(GL_FRAMEBUFFER, this->fog_texture.framebuffer_id);
         glViewport(0, 0, width, height);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -478,6 +485,7 @@ struct VolumetricFog : public Scene {
 
         glBindTexture(GL_TEXTURE_2D, fog_texture.depthbuffer_id);
         fog_shader.Bind();
+        fog_shader.SetData(fog_data);
         fog_shader.SetScreenSize({width, height});
         fog_shader.SetViewMatrix(view_mat);
         fog_shader.SetProjMat(proj_mat);
@@ -486,6 +494,7 @@ struct VolumetricFog : public Scene {
     }
 
     VolumetricFogShader fog_shader;
+    VolumetricFogShader::FogData fog_data;
     RenderTexture fog_texture;
     Mesh cube_mesh;
     std::vector<glm::mat4> objects;
