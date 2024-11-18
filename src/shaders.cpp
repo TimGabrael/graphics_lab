@@ -101,3 +101,75 @@ void TriangleVisibilityShader::SetViewMatrix(const glm::mat4& mat) const {
 void TriangleVisibilityShader::SetProjectionMatrix(const glm::mat4& mat) const {
     glUniformMatrix4fv(this->proj_loc, 1, GL_FALSE, (const GLfloat*)&mat);
 }
+VolumetricFogShader::VolumetricFogShader() {
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/volumetric_fog.vs").c_str(), TranslateRelativePath("../../assets/shaders/volumetric_fog.fs").c_str());
+    glUseProgram(this->program);
+    this->inv_view_loc = glGetUniformLocation(this->program, "invViewMatrix");
+    this->inv_proj_loc = glGetUniformLocation(this->program, "invProjMatrix");
+    this->screen_size_loc = glGetUniformLocation(this->program, "screen_size");
+
+    uint32_t data_idx = glGetUniformBlockIndex(this->program, "FogData");
+    glUniformBlockBinding(this->program, data_idx, 0);
+    glGenBuffers(1, &this->uniform_buffer);
+    glBindBuffer(GL_UNIFORM_BUFFER, this->uniform_buffer);
+    FogData default_data = {};
+    default_data.color = glm::vec4(0.4f, 0.4f, 0.4f, 1.0f);
+    default_data.center_and_radius = glm::vec4(0.0f, 0.0f, 0.0f, 4.0f);
+
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(FogData), &default_data, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    static glm::vec2 positions[] = {
+        {-1.0f,  1.0f},
+        {-1.0f, -1.0f},
+        { 1.0f, -1.0f},
+        {-1.0f,  1.0f},
+        { 1.0f, -1.0f},
+        { 1.0f,  1.0f},
+    };
+
+    glCreateVertexArrays(1, &this->vao);
+    glBindVertexArray(this->vao);
+    glGenBuffers(1, &this->vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, this->vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * ARRSIZE(positions), positions, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
+    glBindVertexArray(0);
+}
+VolumetricFogShader::~VolumetricFogShader() {
+    glDeleteBuffers(1, &this->uniform_buffer);
+    glDeleteBuffers(1, &this->vbo);
+    glDeleteProgram(this->program);
+    glDeleteVertexArrays(1, &this->vao);
+}
+void VolumetricFogShader::Draw() const {
+    this->Bind();
+    glBindVertexArray(this->vao);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glBindVertexArray(0);
+
+}
+void VolumetricFogShader::Bind() const {
+    glUseProgram(this->program);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, this->uniform_buffer);
+}
+void VolumetricFogShader::SetViewMatrix(const glm::mat4& mat) const {
+    glm::mat4 view_mat = glm::inverse(mat);
+    glUniformMatrix4fv(this->inv_view_loc, 1, GL_FALSE, (const GLfloat*)&view_mat);
+}
+void VolumetricFogShader::SetProjMat(const glm::mat4& mat) const {
+    glm::mat4 proj_mat = glm::inverse(mat);
+    glUniformMatrix4fv(this->inv_proj_loc, 1, GL_FALSE, (const GLfloat*)&proj_mat);
+}
+void VolumetricFogShader::SetScreenSize(const glm::vec2& win_size) const {
+    glUniform2fv(this->screen_size_loc, 1, (const GLfloat*)&win_size);
+}
+void VolumetricFogShader::SetData(const FogData& data) const {
+    glBindBuffer(GL_UNIFORM_BUFFER, this->uniform_buffer);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(FogData), &data, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+

@@ -67,4 +67,29 @@ struct TriangleVisibilityShader {
     GLint proj_loc;
 };
 
+struct VolumetricFogShader {
+    struct FogData {
+        glm::vec4 center_and_radius; // glm::vec3 center, float radius (w)
+        glm::vec4 color;
+    };
+    VolumetricFogShader();
+    ~VolumetricFogShader();
+
+    void Draw() const;
+    void Bind() const;
+    void SetViewMatrix(const glm::mat4& mat) const;
+    void SetProjMat(const glm::mat4& mat) const;
+    void SetScreenSize(const glm::vec2& win_size) const;
+    void SetData(const FogData& data) const;
+
+    GLuint vao;
+    GLuint vbo;
+
+    GLuint program;
+    GLuint uniform_buffer;
+
+    GLint inv_view_loc;
+    GLint inv_proj_loc;
+    GLint screen_size_loc;
+};
 

@@ -391,8 +391,8 @@ struct DecimationScene : public Scene {
         glDepthMask(GL_FALSE);
         DrawHDR(hdr_map, proj_mat, view_mat);
         glDepthMask(GL_TRUE);
-
         glEnable(GL_DEPTH_TEST);
+
 
         basic_shader.Bind();
         basic_shader.SetViewMatrix(view_mat);
@@ -412,6 +412,84 @@ struct DecimationScene : public Scene {
 };
 
 
+struct VolumetricFog : public Scene {
+    VolumetricFog(uint32_t width, uint32_t height) {
+        fog_texture = CreateDepthTexture(width, height);
+        
+        std::vector<Vertex> verts;
+        std::vector<uint32_t> inds;
+        glm::vec4 cols[6] = {
+            glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+            glm::vec4(0.3f, 0.3f, 0.3f, 1.0f),
+            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+            glm::vec4(0.7f, 0.7f, 0.7f, 1.0f),
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f),
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        };
+        GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols);
+        this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
+        verts.clear();
+        inds.clear();
+
+        this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, -3.0f)));
+        this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f)), glm::vec3(0.0f, 0.5f, 10.0f)));
+        this->objects.push_back(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3(30.0f, 0.1f, 30.0f)), glm::vec3(0.0f, -0.05f, 0.0f)));
+    }
+    ~VolumetricFog() {
+    }
+    virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
+        glBindFramebuffer(GL_FRAMEBUFFER, this->fog_texture.framebuffer_id);
+        glViewport(0, 0, width, height);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClearDepthf(1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        glBindTexture(GL_TEXTURE_2D, white_texture.id);
+        basic_shader.Bind();
+        basic_shader.SetViewMatrix(view_mat);
+        basic_shader.SetProjectionMatrix(proj_mat);
+        for(const glm::mat4& obj : this->objects) {
+            basic_shader.SetModelMatrix(obj);
+            glBindVertexArray(this->cube_mesh.vao);
+            glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+        }
+
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClearDepthf(1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        glDepthMask(GL_FALSE);
+        DrawHDR(hdr_map, proj_mat, view_mat);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+
+        glBindTexture(GL_TEXTURE_2D, white_texture.id);
+        basic_shader.Bind();
+        basic_shader.SetViewMatrix(view_mat);
+        basic_shader.SetProjectionMatrix(proj_mat);
+        for(const glm::mat4& obj : this->objects) {
+            basic_shader.SetModelMatrix(obj);
+            glBindVertexArray(this->cube_mesh.vao);
+            glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+        }
+
+        glBindTexture(GL_TEXTURE_2D, fog_texture.depthbuffer_id);
+        fog_shader.Bind();
+        fog_shader.SetScreenSize({width, height});
+        fog_shader.SetViewMatrix(view_mat);
+        fog_shader.SetProjMat(proj_mat);
+        fog_shader.Draw();
+
+    }
+
+    VolumetricFogShader fog_shader;
+    RenderTexture fog_texture;
+    Mesh cube_mesh;
+    std::vector<glm::mat4> objects;
+};
 
 
 
@@ -428,8 +506,9 @@ enum CurrentActiveScene {
     CS_RaytraceCubeScene,
     CS_IntersectionCubeScene,
     CS_DecimationScene,
+    CS_VolumetricFog,
 };
-static CurrentActiveScene active_scene = CS_RaytraceCubeScene;
+static CurrentActiveScene active_scene = CS_VolumetricFog;
 
 int main(int argc, char** argv) {
     SetExecutablePath(argv[0]);
@@ -503,6 +582,9 @@ int main(int argc, char** argv) {
     }
     else if(active_scene == CurrentActiveScene::CS_DecimationScene) {
         scene = new DecimationScene(win_width, win_height);
+    }
+    else if(active_scene == CurrentActiveScene::CS_VolumetricFog) {
+        scene = new VolumetricFog(win_width, win_height);
     }
     
     glEnable(GL_BLEND);
