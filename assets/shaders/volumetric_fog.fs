@@ -9,12 +9,12 @@ uniform mat4 invViewMatrix;
 uniform vec2 screen_size;
 
 uniform sampler2D depth_map;
-#define MAX_VOLUME_MARCH_STEPS 10
+#define MAX_VOLUME_MARCH_STEPS 100
 #define ABSORPTION_COEFFICIENT 1.0
 #define NUM_OCTAVES 5
 #define LARGE_NUMBER 1e20
 #define MAX_SDF_SPHERE_STEPS 20
-#define MARCH_MULTIPLIER 1.0
+#define MARCH_MULTIPLIER 0.1
 #define ABSORPTION_CUTOFF 0.25
 
 layout(std140, binding = 0) uniform FogData {
@@ -94,13 +94,13 @@ float fbm_4( in vec3 x ) {
 
 float QueryVolumetricDistanceField(vec3 pos) {
     // test volume
-    vec3 fbm_coord = (pos + 2.0 * vec3(iTime, 0.0, iTime)) / 1.5;
+    vec3 fbm_coord = (pos + 2.0 * vec3(iTime, 0.0, iTime)) / 3.5;
     //float sdf_value = sd_sphere(pos, vec3(-8.0, 2.0 + 20.0 * sin(iTime), -1.0), 5.6);
     //sdf_value = sd_smooth_union(sdf_value, sd_sphere(pos, vec3(8.0, 8.0 + 12.0 * cos(iTime), 3.0), 5.6), 3.0);
     //sdf_value = sd_smooth_union(sdf_value, sd_sphere(pos, vec3(5.0 * sin(iTime), 3.0, 0.0), 8.0), 3.0) + 7.0 * fbm_4(fbm_coord / 3.2);
     //return sdf_value;
 
-    return sd_sphere(pos, center_and_radius.xyz, center_and_radius.w) + 7.0 * fbm_4(fbm_coord / 3.2);
+    return sd_sphere(pos, center_and_radius.xyz, center_and_radius.w) + fbm_4(fbm_coord / 3.2);
 }
 float GetFogDensity(vec3 position) {
     float sdf_value = QueryVolumetricDistanceField(position);
@@ -194,7 +194,9 @@ float GetFog(vec3 pos, vec3 ndir) {
     //}
 
 
-    return abs(t2 - t1) / (2.0 * center_and_radius.w);
+    
+    float distance = abs(t2 - t1) / (2.0 * center_and_radius.w);
+    return distance;
 }
 
 vec4 RenderFog(vec3 ray_origin, vec3 ray_dir) {
@@ -204,9 +206,9 @@ vec4 RenderFog(vec3 ray_origin, vec3 ray_dir) {
     float volumeDepth = IntersectVolumetric(ray_origin, ray_dir, depth);
     float opaqueVisiblity = 1.0f;
     vec3 volumetricColor = vec3(0.0f);
-    if(volumeDepth > 0.0) {
+    if(volumeDepth >= 0.0) {
         const vec3 volumeAlbedo = vec3(0.8);
-        const float marchSize = 0.6f * MARCH_MULTIPLIER;
+        const float marchSize = 0.6f * MARCH_MULTIPLIER * volumeDepth * 0.1f;
         float distanceInVolume = 0.0f;
         float signedDistance = 0.0;
         for(int i = 0; i < MAX_VOLUME_MARCH_STEPS; i++)
@@ -238,6 +240,10 @@ vec4 RenderFog(vec3 ray_origin, vec3 ray_dir) {
                 volumetricColor += absorptionFromMarch * volumeAlbedo * ambient_light_color * color.xyz;
             }
         }
+    }
+    else {
+        volumetricColor = vec3(0.4, 0.4, 0.4);
+        opaqueVisiblity = 0.0;
     }
     return vec4(min(volumetricColor, 1.0f), 1.0 - opaqueVisiblity);
 }
