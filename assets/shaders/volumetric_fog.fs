@@ -210,7 +210,7 @@ vec4 RenderFog(vec3 ray_origin, vec3 ray_dir) {
     vec3 volumetricColor = vec3(0.0f);
     if(volumeDepth != 0.0) {
         const vec3 volumeAlbedo = color.xyz;
-        const float marchSize = 0.6f * MARCH_MULTIPLIER * 1.2;
+        const float marchSize = 0.6f * MARCH_MULTIPLIER;
         float distanceInVolume = 0.0f;
         float signedDistance = 0.0;
         for(int i = 0; i < MAX_VOLUME_MARCH_STEPS; i++)
