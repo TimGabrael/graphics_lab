@@ -106,6 +106,8 @@ float GetFogDensity(vec3 position) {
     float sdf_value = QueryVolumetricDistanceField(position);
     const float max_sdf_multiplier = 1.0;
     bool inside_sdf = sdf_value < 0.0;
+    float noise_val = noise(position + vec3(iTime  * 0.1, iTime * 0.012, iTime * 0.53));
+    sdf_value *= noise_val;
     float sdf_multiplier = inside_sdf ? min(abs(sdf_value), max_sdf_multiplier) : 0.0;
     return sdf_multiplier;
 }
@@ -206,9 +208,9 @@ vec4 RenderFog(vec3 ray_origin, vec3 ray_dir) {
     float volumeDepth = IntersectVolumetric(ray_origin, ray_dir, depth);
     float opaqueVisiblity = 1.0f;
     vec3 volumetricColor = vec3(0.0f);
-    if(volumeDepth >= 0.0) {
-        const vec3 volumeAlbedo = vec3(0.8);
-        const float marchSize = 0.6f * MARCH_MULTIPLIER * volumeDepth * 0.1f;
+    if(volumeDepth != 0.0) {
+        const vec3 volumeAlbedo = color.xyz;
+        const float marchSize = 0.6f * MARCH_MULTIPLIER * 1.2;
         float distanceInVolume = 0.0f;
         float signedDistance = 0.0;
         for(int i = 0; i < MAX_VOLUME_MARCH_STEPS; i++)
@@ -237,7 +239,7 @@ vec4 RenderFog(vec3 ray_origin, vec3 ray_dir) {
                 //float lightVisiblity = GetLightVisiblity(position, lightDirection, lightDistance, MAX_VOLUME_LIGHT_MARCH_STEPS, lightMarchSize);
                 //volumetricColor += absorptionFromMarch * lightVisiblity * volumeAlbedo * lightColor;
 
-                volumetricColor += absorptionFromMarch * volumeAlbedo * ambient_light_color * color.xyz;
+                volumetricColor += absorptionFromMarch * volumeAlbedo * ambient_light_color;
             }
         }
     }
