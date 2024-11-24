@@ -25,6 +25,9 @@ struct FastDynamicMesh {
     std::vector<EdgeData> edges;
     std::vector<VertexData> vertex_data;
     void Initialize(Mesh* underlying_mesh);
+
+    // Absolutely terrible
+    Mesh Decimate(float min_size);
 };
 
 glm::vec2 GetMeshMinMaxTrianglesSizes(const Mesh* input);

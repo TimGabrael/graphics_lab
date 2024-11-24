@@ -668,7 +668,6 @@ void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const
         4, 16, 19, 19, 7, 4,
         21, 18, 15, 15, 12, 21,
         13, 1, 10, 10, 22, 13,
-
         11, 8, 20, 20, 23, 11,
         14, 17, 5, 5, 2, 14
     };

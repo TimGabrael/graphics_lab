@@ -138,10 +138,22 @@ VolumetricFogShader::VolumetricFogShader() {
     glBindVertexArray(0);
 }
 VolumetricFogShader::~VolumetricFogShader() {
-    glDeleteBuffers(1, &this->uniform_buffer);
-    glDeleteBuffers(1, &this->vbo);
-    glDeleteProgram(this->program);
-    glDeleteVertexArrays(1, &this->vao);
+    if(this->uniform_buffer != GL_INVALID_VALUE) {
+        glDeleteBuffers(1, &this->uniform_buffer);
+        this->uniform_buffer = GL_INVALID_VALUE;
+    }
+    if(this->vbo != GL_INVALID_VALUE) {
+        glDeleteBuffers(1, &this->vbo);
+        this->vbo = GL_INVALID_VALUE;
+    }
+    if(this->program != GL_INVALID_VALUE) {
+        glDeleteProgram(this->program);
+        this->program = GL_INVALID_VALUE;
+    }
+    if(this->vao != GL_INVALID_VALUE) {
+        glDeleteVertexArrays(1, &this->vao);
+        this->vao = GL_INVALID_VALUE;
+    }
 }
 void VolumetricFogShader::Draw() const {
     this->Bind();
@@ -171,5 +183,77 @@ void VolumetricFogShader::SetData(const FogData& data) const {
     glBindBuffer(GL_UNIFORM_BUFFER, this->uniform_buffer);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(FogData), &data, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+CascadedShadowShader::CascadedShadowShader() {
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/cascaded_shadow_map.vs").c_str(), TranslateRelativePath("../../assets/shaders/cascaded_shadow_map.fs").c_str());
+    glUseProgram(this->program);
+    this->view_loc = glGetUniformLocation(this->program, "view");
+    this->proj_loc = glGetUniformLocation(this->program, "projection");
+    this->model_loc = glGetUniformLocation(this->program, "model");
+    this->light_direction_loc = glGetUniformLocation(this->program, "light_direction");
+    this->enable_debug_view_loc = glGetUniformLocation(this->program, "enable_debug_view");
+    this->light_proj_loc = glGetUniformLocation(this->program, "light_projections");
+    this->light_bounds_loc = glGetUniformLocation(this->program, "light_projection_bounds");
+
+
+    GLuint col_loc = glGetUniformLocation(this->program, "color_map");
+    GLuint shadow_loc = glGetUniformLocation(this->program, "shadow_map");
+    glUniform1i(col_loc, 0);
+    glUniform1i(shadow_loc, 1);
+}
+CascadedShadowShader::~CascadedShadowShader() {
+    glDeleteProgram(this->program);
+    this->program = INVALID_GL_HANDLE;
+}
+
+void CascadedShadowShader::Bind() const {
+    glUseProgram(this->program);
+}
+void CascadedShadowShader::SetModelMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->model_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void CascadedShadowShader::SetViewMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->view_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void CascadedShadowShader::SetProjMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->proj_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void CascadedShadowShader::SetLightDirection(const glm::vec3& light_dir) const {
+    glUniform3f(this->light_direction_loc, light_dir.x, light_dir.y, light_dir.z);
+}
+void CascadedShadowShader::SetLightProjAndBounds(const glm::mat4 projections[4], const glm::vec4 bounds[4]) const {
+    glUniformMatrix4fv(this->light_proj_loc, 4, GL_FALSE, (const GLfloat*)projections);
+    glUniform4fv(this->light_bounds_loc, 4, (const GLfloat*)bounds);
+}
+void CascadedShadowShader::SetDebugView(bool on) const {
+    glUniform1i(this->enable_debug_view_loc, on);
+}
+void CascadedShadowShader::SetColorTexture(GLuint id) const {
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, id);
+}
+void CascadedShadowShader::SetShadowMap(GLuint id) const {
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, id);
+}
+
+DepthOnlyShader::DepthOnlyShader() {
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/depth_only.vs").c_str(), TranslateRelativePath("../../assets/shaders/depth_only.fs").c_str());
+    glUseProgram(this->program);
+    this->view_proj_loc = glGetUniformLocation(this->program, "view_proj");
+    this->model_loc = glGetUniformLocation(this->program, "model");
+}
+DepthOnlyShader::~DepthOnlyShader() {
+    glDeleteProgram(this->program);
+}
+void DepthOnlyShader::Bind() const {
+    glUseProgram(this->program);
+}
+void DepthOnlyShader::SetViewProjMatrix(const glm::mat4& view_proj) const {
+    glUniformMatrix4fv(this->view_proj_loc, 1, GL_FALSE, (const GLfloat*)&view_proj);
+}
+void DepthOnlyShader::SetModelMatrix(const glm::mat4& model) const {
+    glUniformMatrix4fv(this->model_loc, 1, GL_FALSE, (const GLfloat*)&model);
 }
 

@@ -96,3 +96,40 @@ struct VolumetricFogShader {
     GLint screen_size_loc;
 };
 
+struct CascadedShadowShader {
+    CascadedShadowShader();
+    ~CascadedShadowShader();
+
+    void Bind() const;
+    void SetModelMatrix(const glm::mat4& mat) const;
+    void SetViewMatrix(const glm::mat4& mat) const;
+    void SetProjMatrix(const glm::mat4& mat) const;
+    void SetLightDirection(const glm::vec3& light_dir) const;
+    void SetLightProjAndBounds(const glm::mat4 projections[4], const glm::vec4 bounds[4]) const;
+    void SetDebugView(bool on) const;
+
+    void SetColorTexture(GLuint id) const;
+    void SetShadowMap(GLuint id) const;
+
+    GLuint program;
+    GLuint model_loc;
+    GLuint view_loc;
+    GLuint proj_loc;
+
+    GLuint light_direction_loc;
+    GLuint light_proj_loc;
+    GLuint light_bounds_loc;
+    GLuint enable_debug_view_loc;
+};
+struct DepthOnlyShader {
+    DepthOnlyShader();
+    ~DepthOnlyShader();
+
+    void Bind() const;
+    void SetViewProjMatrix(const glm::mat4& view_proj) const;
+    void SetModelMatrix(const glm::mat4& model) const;
+
+    GLuint program;
+    GLuint model_loc;
+    GLuint view_proj_loc;
+};

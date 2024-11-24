@@ -13,11 +13,16 @@
 #include <vector>
 #include <future>
 
+static constexpr float NEAR_PLANE = 0.01f;
+static constexpr float FAR_PLANE = 100.0f;
+static constexpr float FOV = glm::radians(45.0f);
 
 static Texture2D hdr_map;
 static Texture2D white_texture;
 struct Scene {
     virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) = 0;
+    virtual void Update(float dt) = 0;
+    virtual void KeyCallback(int key, int scancode, int action, int mods) = 0;
 };
 
 struct RaytraceCubeScene : public Scene {
@@ -193,7 +198,7 @@ struct RaytraceCubeScene : public Scene {
         }
         ImGui::End();
     }
-    virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) {
+    virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -213,10 +218,12 @@ struct RaytraceCubeScene : public Scene {
         this->DrawScene(view_mat, basic_shader);
 
         glBindVertexArray(0);
-
+    }
+    virtual void Update(float dt) override {
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) override {
     }
 
-    
     RayImage post_processing;
     std::vector<LitObject> lit_objects;
     std::vector<RayImage> post_processed_imgs;
@@ -236,8 +243,6 @@ struct RaytraceCubeScene : public Scene {
     bool draw_illuminance = false;
     float fov = glm::radians(45.0f);
 };
-
-
 
 
 struct IntersectionCubeScene : public Scene {
@@ -287,7 +292,7 @@ struct IntersectionCubeScene : public Scene {
         this->data.max_extent = glm::length(bb.max - bb.min) / 2.0f;
         this->data.center = {0.0f, 0.0f, 0.0f};
     }
-    void Update(uint32_t screen_width, uint32_t screen_height) {
+    void UpdateTexture(uint32_t screen_width, uint32_t screen_height) {
         if(this->depth_tex.width != screen_width || this->depth_tex.height != screen_height) {
             this->depth_tex = CreateDepthTexture(screen_width, screen_height);
         }
@@ -304,7 +309,7 @@ struct IntersectionCubeScene : public Scene {
     virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
         glActiveTexture(GL_TEXTURE0);
 
-        this->Update(width, height);
+        this->UpdateTexture(width, height);
         this->DrawIntoDepth(basic_shader, view_mat, proj_mat);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -356,6 +361,10 @@ struct IntersectionCubeScene : public Scene {
         glBindVertexArray(this->intersection_mesh.vao);
         glDrawElements(GL_TRIANGLES, this->intersection_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
     }
+    virtual void Update(float dt) override {
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) override {
+    }
 
     ~IntersectionCubeScene() {
     }
@@ -368,18 +377,44 @@ struct IntersectionCubeScene : public Scene {
     Mesh intersection_mesh;
 };
 struct DecimationScene : public Scene {
-    DecimationScene(uint32_t screen_width, uint32_t screen_height) : decimate_mesh(LoadGLTFLoadData(TranslateRelativePath("../../assets/couch.glb").c_str())) {
-        this->mesh_idx = 2;
+    DecimationScene(uint32_t screen_width, uint32_t screen_height) : decimate_mesh(LoadGLTFLoadData(TranslateRelativePath("../../assets/Duck.glb").c_str())) {
+        std::vector<Vertex> verts;
+        std::vector<uint32_t> inds;
+        glm::vec4 cols[6] = {
+            glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+            glm::vec4(0.3f, 0.3f, 0.3f, 1.0f),
+            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+            glm::vec4(0.7f, 0.7f, 0.7f, 1.0f),
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f),
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        };
+        GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols);
+        this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
+
+        this->mesh_idx = 0;
         this->fast_dyn_mesh.Initialize(&decimate_mesh.meshes.at(this->mesh_idx).mesh);
     }
     void DrawScene(const glm::mat4& proj_mat, const glm::mat4& view_mat) {
-        const GLTFLoadData::GltfMesh& mesh = this->decimate_mesh.meshes.at(this->mesh_idx);
+        //const GLTFLoadData::GltfMesh& mesh = this->decimate_mesh.meshes.at(this->mesh_idx);
+        //trig_vis_shader.Bind();
+        //trig_vis_shader.SetModelMatrix(glm::mat4(1.0f));
+        //trig_vis_shader.SetViewMatrix(view_mat);
+        //trig_vis_shader.SetProjectionMatrix(proj_mat);
+        //glBindVertexArray(mesh.mesh.vao);
+        //glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+
+        static Mesh decimated_mesh = this->fast_dyn_mesh.Decimate(0.0f);
+        const Mesh& render_mesh = decimated_mesh;
+        std::cout << "decimated_triangle_count: " << render_mesh.triangle_count << std::endl;
+        std::cout << "original_triangle_count: " << this->decimate_mesh.meshes.at(0).mesh.triangle_count << std::endl;
+
         trig_vis_shader.Bind();
         trig_vis_shader.SetModelMatrix(glm::mat4(1.0f));
         trig_vis_shader.SetViewMatrix(view_mat);
         trig_vis_shader.SetProjectionMatrix(proj_mat);
-        glBindVertexArray(mesh.mesh.vao);
-        glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(render_mesh.vao);
+        glDrawElements(GL_TRIANGLES, render_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+
     }
     virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -402,15 +437,19 @@ struct DecimationScene : public Scene {
 
         glBindVertexArray(0);
     }
+    virtual void Update(float dt) override {
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) override {
+    }
 
     ~DecimationScene() {
     }
     TriangleVisibilityShader trig_vis_shader;
+    Mesh cube_mesh; // simple mesh for testing purposes
     FastDynamicMesh fast_dyn_mesh;
     uint32_t mesh_idx = 2;
     GLTFLoadData decimate_mesh;
 };
-
 
 struct VolumetricFog : public Scene {
     VolumetricFog(uint32_t width, uint32_t height) {
@@ -492,6 +531,14 @@ struct VolumetricFog : public Scene {
         fog_shader.Draw();
 
     }
+    virtual void Update(float dt) override {
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) override {
+        if(key == GLFW_KEY_O && action == GLFW_PRESS) {
+            fog_shader.~VolumetricFogShader();
+            new(&fog_shader)VolumetricFogShader();
+        }
+    }
 
     VolumetricFogShader fog_shader;
     VolumetricFogShader::FogData fog_data;
@@ -499,25 +546,262 @@ struct VolumetricFog : public Scene {
     Mesh cube_mesh;
     std::vector<glm::mat4> objects;
 };
+struct CascadedShadowMap : public Scene {
+    CascadedShadowMap() {
+        std::vector<Vertex> verts;
+        std::vector<uint32_t> inds;
+        glm::vec4 cols[6] = {
+            glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+            glm::vec4(0.3f, 0.3f, 0.3f, 1.0f),
+            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+            glm::vec4(0.7f, 0.7f, 0.7f, 1.0f),
+            glm::vec4(0.8f, 0.8f, 0.8f, 1.0f),
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        };
+        GenerateCube(verts, inds, {1.0f, 1.0f, 1.0f}, cols);
+        this->cube_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
+        this->objects.push_back(glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(200.0f, 0.1f, 200.0f)), glm::vec3(0.0f, -0.1f, 0.0f)));
+        this->objects.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.51f, 0.0f)));
+
+        this->shadow_map = CreateDepthTexture(4096, 4096);
+        this->light_dir = glm::normalize(glm::vec3(1.0f, -1.0f, 0.0f));
+
+        // setup the sampling for the shadow map
+        glBindTexture(GL_TEXTURE_2D, this->shadow_map.depthbuffer_id);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    }
+    ~CascadedShadowMap() {
+        DestroyRenderTexture(&this->shadow_map);
+        DestroyMesh(&this->cube_mesh);
+    }
+
+    glm::mat4 CalculateLightSpaceMatrix(const glm::vec3& light_dir, const glm::mat4& view_mat, const glm::mat4& proj_mat, float near_plane, float far_plane, glm::mat4& out_view, glm::mat4& out_proj) {
+        glm::mat4 inv_vp = glm::inverse(proj_mat * view_mat);
+        glm::vec4 frustum_corners[8] = {
+            { -1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, -1.0f, 0.0f, 1.0f },
+            { -1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f,  1.0f, 0.0f, 1.0f },
+            { -1.0f, -1.0f, 1.0f, 1.0f }, {  1.0f, -1.0f, 1.0f, 1.0f },
+            { -1.0f,  1.0f, 1.0f, 1.0f }, {  1.0f,  1.0f, 1.0f, 1.0f }
+        };
+
+        const glm::mat4 light_view = glm::lookAt(light_dir * 1.0f, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+        glm::vec3 min_bounds = glm::vec3( FLT_MAX);
+        glm::vec3 max_bounds = glm::vec3(-FLT_MAX);
+        for(size_t i = 0; i < ARRSIZE(frustum_corners); ++i) {
+            glm::vec4 world_pos = inv_vp * frustum_corners[i];
+            world_pos /= world_pos.w;
+            glm::vec3 corner = glm::vec3(world_pos);
+            float z = glm::mix(near_plane, far_plane, (corner.z - near_plane) / (far_plane - near_plane));
+            corner.z = z;
+
+            const glm::vec4 light_space_corner = light_view * glm::vec4(corner, 1.0f);
+            const glm::vec3 light_frustum_corner = glm::vec3(light_space_corner);
+            min_bounds = glm::min(min_bounds, light_frustum_corner);
+            max_bounds = glm::max(max_bounds, light_frustum_corner);
+        }
+
+        const glm::mat4 light_proj = glm::ortho(min_bounds.x, max_bounds.x, max_bounds.y, min_bounds.y, min_bounds.z, max_bounds.z);
+
+        out_view = light_view;
+        out_proj = light_proj;
+
+        return light_proj * light_view;
+    }
+    void DrawToShadowMap() const {
+        glCullFace(GL_BACK);
+        glBindFramebuffer(GL_FRAMEBUFFER, shadow_map.framebuffer_id);
+        glViewport(0, 0, shadow_map.width, shadow_map.height);
+        glClearDepthf(1.0f);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        this->depth_only_shader.Bind();
+        const glm::vec2 shadow_tex_size = glm::vec2(shadow_map.width, shadow_map.height);
+        for(size_t i = 0; i < ARRSIZE(light_projections); ++i) {
+            const glm::vec2 start = glm::vec2(light_bounds[i].x, light_bounds[i].y) * shadow_tex_size;
+            const glm::vec2 end = glm::vec2(light_bounds[i].z, light_bounds[i].w) * shadow_tex_size;
+            const glm::vec2 size = end - start;
+            glViewport(static_cast<GLint>(start.x), static_cast<GLint>(start.y), static_cast<GLsizei>(size.x), static_cast<GLsizei>(size.y));
+            this->depth_only_shader.SetViewProjMatrix(light_projections[i]);
+            for(const glm::mat4& obj : this->objects) {
+                this->depth_only_shader.SetModelMatrix(obj);
+                glBindVertexArray(this->cube_mesh.vao);
+                glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+    }
+
+    void DrawScene(const glm::mat4& proj, const glm::mat4& view, uint32_t win_width, uint32_t win_height) const {
+        glCullFace(GL_FRONT);
+        
+        
+        glm::mat4 render_view = view;
+        glm::mat4 render_proj = proj;
+        if(this->light_debug_view < ARRSIZE(light_view)) {
+            render_view = light_view[this->light_debug_view];
+            render_proj = light_proj[this->light_debug_view];
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, win_width, win_height);
+        glClearDepthf(1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        glActiveTexture(GL_TEXTURE0);
+        glDepthMask(GL_FALSE);
+        DrawHDR(hdr_map, proj, render_view);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+
+        this->shader.Bind();
+        this->shader.SetViewMatrix(render_view);
+        this->shader.SetProjMatrix(render_proj);
+        this->shader.SetLightProjAndBounds(this->light_projections, this->light_bounds);
+        this->shader.SetColorTexture(white_texture.id);
+        this->shader.SetShadowMap(this->shadow_map.depthbuffer_id);
+        this->shader.SetLightDirection(this->light_dir);
+        this->shader.SetDebugView(this->debug_view);
+        for(const glm::mat4& obj : this->objects) {
+            this->shader.SetModelMatrix(obj);
+            glBindVertexArray(this->cube_mesh.vao);
+            glDrawElements(GL_TRIANGLES, this->cube_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    void CalculateLightProjections(const glm::mat4& proj, const glm::mat4& view) {
+        const glm::mat4 inv_cam = glm::inverse(proj * view);
+
+        float cascade_splits[NUM_CASCADES] = {};
+        const float near_clip = NEAR_PLANE;
+        const float far_clip = FAR_PLANE;
+        const float clip_range = far_clip - near_clip;
+        const float min_z = near_clip;
+        const float max_z = near_clip + clip_range;
+        const float range = max_z - min_z;
+        const float ratio = max_z / min_z;
+        for(uint32_t i = 0; i < NUM_CASCADES; ++i) {
+            const float p = (i + 1) / static_cast<float>(NUM_CASCADES);
+            const float log = min_z * std::pow(ratio, p);
+            const float uniform = min_z + range * p;
+            const float d = split_lambda * (log - uniform) + uniform;
+            cascade_splits[i] = (d - near_clip) / clip_range;
+        }
+        float last_split_dist = 0.0f;
+        for(uint32_t i = 0; i < NUM_CASCADES; ++i) {
+            const float split_dist = cascade_splits[i];
+            glm::vec3 frustum_corners[8] = {
+                glm::vec3(-1.0f,  1.0f, 0.0f),
+                glm::vec3( 1.0f,  1.0f, 0.0f),
+                glm::vec3( 1.0f, -1.0f, 0.0f),
+                glm::vec3(-1.0f, -1.0f, 0.0f),
+                glm::vec3(-1.0f,  1.0f,  1.0f),
+                glm::vec3( 1.0f,  1.0f,  1.0f),
+                glm::vec3( 1.0f, -1.0f,  1.0f),
+                glm::vec3(-1.0f, -1.0f,  1.0f),
+            };
+
+            for(size_t j = 0; j < ARRSIZE(frustum_corners); ++j) {
+                const glm::vec4 inv_corner = inv_cam * glm::vec4(frustum_corners[j], 1.0f);
+                frustum_corners[j] = inv_corner / inv_corner.w;
+            }
+            for(uint32_t j = 0; j < 4; ++j) {
+                const glm::vec3 dist = frustum_corners[j + 4] - frustum_corners[j];
+                frustum_corners[j + 4] = frustum_corners[j] + (dist * split_dist);
+                frustum_corners[j] = frustum_corners[j] + (dist * last_split_dist);
+            }
+            glm::vec3 frustum_center = glm::vec3(0.0f);
+            for(uint32_t j = 0; j < 8; ++j) {
+                frustum_center += frustum_corners[j];
+            }
+            frustum_center /= 8.0f;
+            float radius = 0.0f;
+            for(uint32_t j = 0; j < 8; ++j) {
+                const float distance = glm::length(frustum_corners[j] - frustum_center);
+                radius = glm::max(radius, distance);
+            }
+            const glm::vec3 max_extents = glm::vec3(radius);
+            const glm::vec3 min_extents = -max_extents;
+
+            this->light_view[i] = glm::lookAt(frustum_center + light_dir * min_extents.z, frustum_center, glm::vec3(0.0f, 1.0f, 0.0f));
+            this->light_proj[i] = glm::ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, 0.0f, max_extents.z - min_extents.z);
+
+            this->light_projections[i] = this->light_proj[i] * this->light_view[i];
+
+            uint32_t x = i % 2;
+            uint32_t y = i / 2;
+            this->light_bounds[i] = glm::vec4(x * 0.5f, y * 0.5f, (x+1) * 0.5f, (y+1) * 0.5f);
+
+            last_split_dist = cascade_splits[i];
+        }
+    }
+    virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CW);
+        
+        CalculateLightProjections(proj_mat, view_mat);
+        DrawToShadowMap();
+        DrawScene(proj_mat, view_mat, width, height);
+    }
+    virtual void Update(float dt) override {
+        cur_light_angle += dt * 0.1f;
+        this->light_dir = glm::normalize(glm::vec3(cosf(cur_light_angle), -1.0f, sinf(cur_light_angle)));
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) override {
+        if(key == GLFW_KEY_O && action == GLFW_PRESS) {
+            light_debug_view += 1;
+            if(light_debug_view >= ARRSIZE(light_view)) {
+                light_debug_view = UINT32_MAX;
+            }
+        }
+        if(key == GLFW_KEY_K && action == GLFW_PRESS) {
+            this->debug_view = !this->debug_view;
+        }
+    }
 
 
+    static constexpr uint32_t NUM_CASCADES = 4;
+    glm::vec3 light_dir;
+    float cur_light_angle = 0.0f;
+    glm::mat4 light_view[NUM_CASCADES];
+    glm::mat4 light_proj[NUM_CASCADES];
+    uint32_t light_debug_view = UINT32_MAX;
+    glm::mat4 light_projections[NUM_CASCADES];
+    glm::vec4 light_bounds[NUM_CASCADES];
+    bool debug_view = false;
+    float split_lambda = 0.95f;
+    CascadedShadowShader shader;
+    DepthOnlyShader depth_only_shader;
+    RenderTexture shadow_map;
+    Mesh cube_mesh;
+    std::vector<glm::mat4> objects;
+};
 
 
-static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-
-}
-static std::string test_string;
-static void CharacterCallback(GLFWwindow* window, unsigned int codepoint) {
-    utf8::append(codepoint, test_string);
-}
 
 enum CurrentActiveScene {
     CS_RaytraceCubeScene,
     CS_IntersectionCubeScene,
     CS_DecimationScene,
     CS_VolumetricFog,
+    CS_CascadedShadowMap,
 };
-static CurrentActiveScene active_scene = CS_VolumetricFog;
+static CurrentActiveScene active_scene = CS_CascadedShadowMap;
+Scene* scene = nullptr;
+
+static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    if(scene) {
+        scene->KeyCallback(key, scancode, action, mods);
+    }
+}
+static std::string test_string;
+static void CharacterCallback(GLFWwindow* window, unsigned int codepoint) {
+    utf8::append(codepoint, test_string);
+}
+
 
 int main(int argc, char** argv) {
     SetExecutablePath(argv[0]);
@@ -582,7 +866,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    Scene* scene = nullptr;
     if(active_scene == CurrentActiveScene::CS_IntersectionCubeScene) {
         scene = new IntersectionCubeScene(win_width, win_height);
     }
@@ -594,6 +877,9 @@ int main(int argc, char** argv) {
     }
     else if(active_scene == CurrentActiveScene::CS_VolumetricFog) {
         scene = new VolumetricFog(win_width, win_height);
+    }
+    else if(active_scene == CurrentActiveScene::CS_CascadedShadowMap) {
+        scene = new CascadedShadowMap();
     }
     
     glEnable(GL_BLEND);
@@ -613,16 +899,22 @@ int main(int argc, char** argv) {
     }
     
 
+    auto start = std::chrono::high_resolution_clock::now();
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+
+        auto now = std::chrono::high_resolution_clock::now();
+        const float dt = std::chrono::duration<float>(now - start).count();
+        start = now;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
         glfwGetWindowSize(window, &win_width, &win_height);
-        glm::vec2 win_size = {static_cast<float>(win_width), static_cast<float>(win_height)};
-        proj = glm::perspective(glm::radians(45.0f), win_size.x / win_size.y, 0.01f, 100.0f);
+        const glm::vec2 win_size = {static_cast<float>(win_width), static_cast<float>(win_height)};
+        proj = glm::perspective(FOV, win_size.x / win_size.y, NEAR_PLANE, FAR_PLANE);
 
         static ImVec2 mouse_pos = ImGui::GetMousePos();
         const ImVec2 new_mouse_pos = ImGui::GetMousePos();
@@ -690,6 +982,7 @@ int main(int argc, char** argv) {
 
         view = glm::lookAt(cam_pos, center, glm::vec3(0.0, 1.0, 0.0));  
 
+        scene->Update(dt);
         scene->Draw(proj, view, basic_shader, win_width, win_height);
 
         if(false) { // nice looking text

@@ -3,6 +3,7 @@
 #include "util.h"
 #include <iostream>
 #include <algorithm>
+#include <thread>
 
 void FastDynamicMesh::Initialize(Mesh* underlying_mesh) {
     this->mesh = underlying_mesh;
@@ -94,6 +95,274 @@ void FastDynamicMesh::Initialize(Mesh* underlying_mesh) {
             }
         }
     }
+}
+Mesh FastDynamicMesh::Decimate(float min_size) {
+    std::vector<EdgeData> dyn_edges = this->edges;
+    std::vector<Vertex> temp_vertices(this->mesh->verts, this->mesh->verts + this->mesh->vertex_count);
+
+    std::sort(dyn_edges.begin(), dyn_edges.end(), [](const EdgeData& e1, const EdgeData& e2) {
+        return e1.len < e2.len;
+    });
+    for(size_t i = 0; i < dyn_edges.size(); ++i) {
+        // need at least 3 edges to form some kind of mesh
+        if(dyn_edges.size() == 3) {
+            break;
+        }
+        const EdgeData edge = dyn_edges.at(i);
+        if(edge.len < min_size) {
+            const Vertex v1 = temp_vertices.at(edge.vtx_1);
+            const Vertex v2 = temp_vertices.at(edge.vtx_2);
+
+            {
+                std::vector<uint32_t> v1_connections;
+                std::vector<uint32_t> v2_connections;
+                std::vector<uint32_t> shared_connections;
+                for(size_t j = 0; j < dyn_edges.size(); ++j) {
+                    if(i == j) {
+                        continue;
+                    }
+                    if(edge.vtx_1 == dyn_edges.at(j).vtx_1 || edge.vtx_1 == dyn_edges.at(j).vtx_2) {
+                        if(edge.vtx_1 == dyn_edges.at(j).vtx_1) {
+                            v1_connections.push_back(dyn_edges.at(j).vtx_2);
+                        }
+                        else {
+                            v1_connections.push_back(dyn_edges.at(j).vtx_1);
+                        }
+                    }
+                    if(edge.vtx_2 == dyn_edges.at(j).vtx_1 || edge.vtx_2 == dyn_edges.at(j).vtx_2) {
+                        if(edge.vtx_2 == dyn_edges.at(j).vtx_1) {
+                            v2_connections.push_back(dyn_edges.at(j).vtx_2);
+                        }
+                        else {
+                            v2_connections.push_back(dyn_edges.at(j).vtx_1);
+                        }
+                    }
+                }
+                for(uint32_t v1 : v1_connections) {
+                    for(uint32_t v2 : v2_connections) {
+                        if(v1 == v2) {
+                            shared_connections.push_back(v1);
+                            break;
+                        }
+                    }
+                }
+                for(uint32_t shared : shared_connections) {
+                    uint32_t min_edge_1 = UINT32_MAX;
+                    float min_dist_e1 = FLT_MAX;
+                    uint32_t min_edge_2 = UINT32_MAX;
+                    float min_dist_e2 = FLT_MAX;
+                    const glm::vec3& shared_pos = temp_vertices.at(shared).pos;
+                    for(uint32_t v1_conn : v1_connections) {
+                        if(v1_conn == shared) {
+                            continue;
+                        }
+                        bool already_connected = false;
+                        for(size_t j = 0; j < dyn_edges.size(); ++j) {
+                            const EdgeData& ej = dyn_edges.at(j);
+                            if((ej.vtx_1 == v1_conn || ej.vtx_2 == v1_conn) && (ej.vtx_1 == shared || ej.vtx_2 == shared)) {
+                                already_connected = true;
+                                break;
+                            }
+                        }
+                        if(already_connected) {
+                            continue;
+                        }
+                        const glm::vec3& v1_pos = temp_vertices.at(v1_conn).pos;
+                        const float dist = glm::distance(shared_pos, v1_pos);
+                        if(dist < min_dist_e1) {
+                            min_dist_e1 = dist;
+                            min_edge_1 = v1_conn;
+                        }
+
+                    }
+                    for(uint32_t v2_conn : v2_connections) {
+                        if(v2_conn == shared || v2_conn == min_edge_1) {
+                            continue;
+                        }
+                        bool already_connected = false;
+                        for(size_t j = 0; j < dyn_edges.size(); ++j) {
+                            const EdgeData& ej = dyn_edges.at(j);
+                            if((ej.vtx_1 == v2_conn || ej.vtx_2 == v2_conn) && (ej.vtx_1 == shared || ej.vtx_2 == shared)) {
+                                already_connected = true;
+                                break;
+                            }
+                        }
+                        if(already_connected) {
+                            continue;
+                        }
+                        const glm::vec3& v2_pos = temp_vertices.at(v2_conn).pos;
+                        const float dist = glm::distance(shared_pos, v2_pos);
+                        if(dist < min_dist_e2) {
+                            min_dist_e2 = dist;
+                            min_edge_2 = v2_conn;
+                        }
+                    }
+                    if(min_edge_1 != UINT32_MAX) {
+                        EdgeData smallest_conn_1 = {};
+                        smallest_conn_1.vtx_1 = shared;
+                        smallest_conn_1.vtx_2 = min_edge_1;
+                        smallest_conn_1.len = min_dist_e1;
+                        dyn_edges.push_back(smallest_conn_1);
+                    }
+                    if(min_edge_2 != UINT32_MAX) {
+                        EdgeData smallest_conn_2 = {};
+
+                        smallest_conn_2.vtx_1 = shared;
+                        smallest_conn_2.vtx_2 = min_edge_2;
+                        smallest_conn_2.len = min_dist_e2;
+
+                        dyn_edges.push_back(smallest_conn_2);
+                    }
+                }
+            }
+            std::cout << "dyn_edges.size(): " << dyn_edges.size() << std::endl;
+
+            // destroy the edge
+            Vertex mid_vert = {};
+            mid_vert.pos = glm::mix(v1.pos, v2.pos, 0.5f);
+            mid_vert.uv = glm::mix(v1.uv, v2.uv, 0.5f);
+            mid_vert.col = glm::mix(v1.col, v2.col, 0.5f);
+            mid_vert.nor = glm::mix(v1.nor, v2.nor, 0.5f);
+
+            const uint32_t new_vert_idx = temp_vertices.size();
+            temp_vertices.push_back(mid_vert);
+
+
+
+
+            for(size_t j = 0; j < dyn_edges.size(); ++j) {
+                if(j == i) {
+                    continue;
+                }
+                EdgeData& e1 = dyn_edges.at(j);
+                if(e1.vtx_1 == edge.vtx_1 || e1.vtx_1 == edge.vtx_2) {
+                    const Vertex& ov = temp_vertices.at(e1.vtx_2);
+                    e1.vtx_1 = new_vert_idx;
+                    e1.len = glm::distance(ov.pos, mid_vert.pos);
+                }
+                if(e1.vtx_2 == edge.vtx_1 || e1.vtx_2 == edge.vtx_2) {
+                    const Vertex& ov = temp_vertices.at(e1.vtx_1);
+                    e1.vtx_2 = new_vert_idx;
+                    e1.len = glm::distance(ov.pos, mid_vert.pos);
+                }
+            }
+
+
+
+            dyn_edges.erase(dyn_edges.begin() + i);
+
+            // remove duplicate edges
+            for(size_t j = 0; j < dyn_edges.size(); ++j) {
+                const EdgeData& ej = dyn_edges.at(j);
+                for(size_t k = 0; k < dyn_edges.size(); ++k) {
+                    if(k == j) {
+                        continue;
+                    }
+                    const EdgeData& ek = dyn_edges.at(k);
+
+                    if((ej.vtx_1 == ek.vtx_1 || ej.vtx_1 == ek.vtx_2) && (ej.vtx_2 == ek.vtx_1 || ej.vtx_2 == ek.vtx_2)) {
+                        // remove same edge
+                        dyn_edges.erase(dyn_edges.begin() + k);
+                        //k -= 1;
+                        k = SIZE_MAX;
+                    }
+                }
+            }
+
+            // repeat all the calculations,
+            // as a new connection might be smaller than the max_size
+            i = SIZE_MAX;
+            std::sort(dyn_edges.begin(), dyn_edges.end(), [](const EdgeData& e1, const EdgeData& e2) {
+                return e1.len < e2.len;
+            });
+        }
+    }
+    // vertex look up
+    std::unordered_map<uint32_t, uint32_t> translation_map;
+    std::vector<Vertex> compacted_vertices;
+    for(const EdgeData& e : dyn_edges) {
+        if(translation_map.find(e.vtx_1) == translation_map.end()) {
+            translation_map[e.vtx_1] = compacted_vertices.size();
+            compacted_vertices.push_back(temp_vertices.at(e.vtx_1));
+        }
+        if(translation_map.find(e.vtx_2) == translation_map.end()) {
+            translation_map[e.vtx_2] = compacted_vertices.size();
+            compacted_vertices.push_back(temp_vertices.at(e.vtx_2));
+        }
+    }
+
+    std::vector<uint32_t> inds;
+    // rebuild a mesh from the edges
+    for(size_t i = 0; i < dyn_edges.size(); ++i) {
+        const EdgeData& e1 = dyn_edges.at(i);
+        for(size_t j = i + 1; j < dyn_edges.size(); ++j) {
+            const EdgeData& e2 = dyn_edges.at(j);
+            uint32_t unrelated_v1 = UINT32_MAX;
+            uint32_t unrelated_v2 = UINT32_MAX;
+            uint32_t shared_v = UINT32_MAX;
+            bool e1v1_related = e1.vtx_1 == e2.vtx_1 || e1.vtx_1 == e2.vtx_2;
+            bool e1v2_related = e1.vtx_2 == e2.vtx_1 || e1.vtx_2 == e2.vtx_2;
+            if(e1v1_related) {
+                shared_v = e1.vtx_1;
+                unrelated_v1 = e1.vtx_2;
+                if(e1.vtx_1 == e2.vtx_1) {
+                    unrelated_v2 = e2.vtx_2;
+                }
+                else {
+                    unrelated_v2 = e2.vtx_1;
+                }
+            }
+            else if(e1v2_related) {
+                shared_v = e1.vtx_2;
+                unrelated_v1 = e1.vtx_1;
+                if(e1.vtx_2 == e2.vtx_1) {
+                    unrelated_v2 = e2.vtx_2;
+                }
+                else {
+                    unrelated_v2 = e2.vtx_1;
+                }
+            }
+            if(unrelated_v1 == unrelated_v2 || unrelated_v1 == UINT32_MAX || unrelated_v2 == UINT32_MAX) {
+                continue;
+            }
+            // check that the 2 unrelated vertices share an edge aswell
+            bool unrelated_connected = false;
+            for(size_t k = j + 1; k < dyn_edges.size(); ++k) {
+                const EdgeData& e3 = dyn_edges.at(k);
+                if((e3.vtx_1 == unrelated_v1 || e3.vtx_1 == unrelated_v2) && (e3.vtx_2 == unrelated_v1 || e3.vtx_2 == unrelated_v2)) {
+                    unrelated_connected = true;
+                    break;
+                }
+            }
+            if(unrelated_connected) {
+                // yippi a triangle
+                uint32_t t1 = translation_map[unrelated_v1];
+                uint32_t t2 = translation_map[unrelated_v2];
+                uint32_t t3 = translation_map[shared_v];
+                const Vertex& v1 = compacted_vertices.at(t1);
+                const Vertex& v2 = compacted_vertices.at(t2);
+                const Vertex& v3 = compacted_vertices.at(t3);
+                const glm::vec3 d12 = v2.pos - v1.pos;
+                const glm::vec3 d13 = v3.pos - v1.pos;
+                const glm::vec3 normal = glm::normalize(glm::cross(d13, d12));
+                if(glm::dot(normal, v1.nor) > 0.0f) {
+                    std::swap(t2, t3);
+                }
+
+
+                inds.push_back(t1);
+                inds.push_back(t2);
+                inds.push_back(t3);
+            }
+        }
+    }
+    if(inds.size() == 0) {
+        std::cout << "NO INDICES WERE GENERATRED" << std::endl;
+        inds.push_back(0);
+        inds.push_back(0);
+        inds.push_back(0);
+    }
+    return CreateMesh(compacted_vertices.data(), inds.data(), compacted_vertices.size(), inds.size());
 }
 glm::vec2 GetMeshMinMaxTrianglesSizes(const Mesh* input) {
     float min_trig_area = FLT_MAX;
