@@ -25,6 +25,31 @@ void BasicShader::SetProjectionMatrix(const glm::mat4& mat) const {
 void BasicShader::SetTexture(GLuint id) const {
     glBindTexture(GL_TEXTURE_2D, id);
 }
+BasicShaderInstanced::BasicShaderInstanced() {
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/basic_instanced.vs").c_str(), TranslateRelativePath("../../assets/shaders/basic.fs").c_str());
+    this->model_loc = glGetUniformLocation(this->program, "model");
+    this->view_loc = glGetUniformLocation(this->program, "view");
+    this->proj_loc = glGetUniformLocation(this->program, "projection");
+}
+BasicShaderInstanced::~BasicShaderInstanced() {
+    glDeleteProgram(this->program);
+}
+void BasicShaderInstanced::Bind() const {
+    glUseProgram(this->program);
+}
+void BasicShaderInstanced::SetModelMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->model_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void BasicShaderInstanced::SetViewMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->view_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void BasicShaderInstanced::SetProjectionMatrix(const glm::mat4& mat) const {
+    glUniformMatrix4fv(this->proj_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void BasicShaderInstanced::SetTexture(GLuint id) const {
+    glBindTexture(GL_TEXTURE_2D, id);
+}
+
 IntersectionHightlightingShader::IntersectionHightlightingShader() {
     this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/basic.vs").c_str(), TranslateRelativePath("../../assets/shaders/intersection.fs").c_str());
     glUseProgram(this->program);

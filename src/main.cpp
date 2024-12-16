@@ -780,6 +780,317 @@ struct CascadedShadowMap : public Scene {
     std::vector<glm::mat4> objects;
 };
 
+struct FluidSimScene : public Scene {
+    struct Density {
+        float far;
+        float near;
+    };
+    FluidSimScene(uint32_t count_x, uint32_t count_y, uint32_t count_z) {
+        this->bb.min = glm::vec3(-1.0f);
+        this->bb.max = glm::vec3( 1.0f);
+        const glm::vec3 count = glm::vec3(static_cast<float>(count_x), static_cast<float>(count_y), static_cast<float>(count_z));
+        const glm::vec3 start = this->bb.min;
+        const glm::vec3 delta = (this->bb.max - this->bb.min) / count;
+        this->radius = delta / 2.0f;
+
+        std::vector<Vertex> verts;
+        std::vector<uint32_t> inds;
+        //GenerateSphere(verts, inds, {}, this->radius, {1.0f, 1.0f, 1.0f, 1.0f}, 8);
+        GenerateIcoSphere(verts, inds, {}, this->radius, {1.0f, 1.0f, 1.0f, 1.0f}, true);
+
+        this->base_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
+        glGenBuffers(1, &this->instance_buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, this->instance_buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * this->particle_positions.size(), this->particle_positions.data(), GL_STATIC_DRAW);
+
+        glBindVertexArray(this->base_mesh.vao);
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(BasicShaderInstanced::InstanceData), 0);
+        glEnableVertexAttribArray(4);
+        glVertexAttribDivisor(4, 1);
+
+        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(BasicShaderInstanced::InstanceData), (void*)offsetof(BasicShaderInstanced::InstanceData, col));
+        glEnableVertexAttribArray(5);
+        glVertexAttribDivisor(5, 1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+
+
+        for(uint32_t z = 0; z < count_z; ++z) {
+            for(uint32_t y = 0; y < count_y; ++y) {
+                for(uint32_t x = 0; x < count_x; ++x) {
+                    const glm::vec3 ind = glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+                    const glm::vec3 cur = start + delta * ind;
+                    if(glm::dot(cur, cur) < 0.5f) {
+                        this->particle_positions.push_back(cur);
+                        this->particle_velocities.push_back({});
+                    }
+                }
+            }
+        }
+    }
+    ~FluidSimScene() {
+        glDeleteBuffers(1, &this->instance_buffer);
+    }
+
+
+    static float SmoothingKernelPoly6(float dst, float radius) {
+        if (dst < radius) {
+            const float scale = 315.0f / (64.0f * M_PI * glm::abs(radius * radius * radius * radius * radius * radius * radius * radius * radius));
+            const float v = radius * radius - dst * dst;
+            return v * v * v * scale;
+        }
+        return 0.0f;
+    }
+    static float DensityKernel(float dst, float radius) {
+        if(dst < radius) {
+            const float scale = 15.0f / (2.0f * M_PI * radius * radius * radius * radius * radius);
+            const float v = radius - dst;
+            return v * v * scale;
+        }
+        return 0.0f;
+    }
+    static float NearDensityKernel(float dst, float radius) {
+        if(dst < radius) {
+            const float scale = 15.0f / (M_PI * radius * radius * radius * radius * radius * radius);
+            const float v = radius - dst;
+            return v * v * v * scale;
+        }
+        return 0.0f;
+    }
+    static float DensityDerivative(float dst, float radius) {
+        if (dst <= radius) {
+            const float scale = 15.0f / (M_PI * radius * radius * radius * radius * radius);
+            const float v = radius - dst;
+            return -v * scale;
+        }
+        return 0.0f;
+    }
+    static float NearDensityDerivative(float dst, float radius) {
+        if (dst <= radius) {
+            const float scale = 45.0f / (M_PI * radius * radius * radius * radius * radius * radius);
+            const float v = radius - dst;
+            return -v * v * scale;
+        }
+        return 0;
+    }
+
+    float PressureFromDensity(float density) {
+        return (density - this->target_density) * this->pressure_multiplier;
+    }
+    float NearPressureFromDensity(float near_density) {
+        return near_density * this->near_pressure_multiplier;
+    }
+    void ExternalForces(float dt) {
+        for(size_t i = 0; i < this->particle_velocities.size(); ++i) {
+            this->particle_velocities.at(i) += this->gravity * dt;
+            this->predicted_positions.at(i) = this->particle_positions.at(i) + this->particle_velocities.at(i) * 1.0f / 120.0f;
+        }
+    }
+    void CalculateDensities(float dt) {
+        const float square_radius = this->smoothing_radius * this->smoothing_radius;
+        for(size_t i = 0; i < this->particle_positions.size(); ++i) {
+            const glm::vec3& pos = this->predicted_positions.at(i);
+            Density density = {0.0f, 0.0f};
+            for(size_t j = 0; j < this->particle_positions.size(); ++j) {
+                const glm::vec3& predicted_pos = this->predicted_positions.at(j);
+                const glm::vec3 offset_to_neighbour = predicted_pos - pos;
+                const float square_dist = glm::dot(offset_to_neighbour, offset_to_neighbour);
+                if(square_dist > square_radius) {
+                    continue;
+                }
+                const float dst = glm::sqrt(square_dist);
+                density.far += DensityKernel(dst, this->smoothing_radius);
+                density.near += NearDensityKernel(dst, this->smoothing_radius);
+            }
+            this->particle_densities.at(i) = density;
+        }
+    }
+    void CalculatePressureForce(float dt) {
+        const float square_radius = this->smoothing_radius * this->smoothing_radius;
+        for(size_t i = 0; i < this->particle_positions.size(); ++i) {
+            const Density& density = this->particle_densities.at(i);
+            const float pressure = PressureFromDensity(density.far);
+            const float near_pressure = NearPressureFromDensity(density.near);
+            const glm::vec3& pos = this->predicted_positions.at(i);
+            
+            glm::vec3 pressure_force = {};
+            for(size_t j = 0; j < this->particle_positions.size(); ++j) {
+                if(i == j) {
+                    continue;
+                }
+                const glm::vec3& neighbour_pos = this->predicted_positions.at(j);
+                const glm::vec3 offset_to_neighbour = neighbour_pos - pos;
+                const float square_dist = glm::dot(offset_to_neighbour, offset_to_neighbour);
+                if(square_dist > square_radius) {
+                    continue;
+                }
+                const Density& neighbour_density = this->particle_densities.at(j);
+                const float neighbour_pressure = PressureFromDensity(neighbour_density.far);
+                const float near_neighbour_pressure = NearPressureFromDensity(neighbour_density.near);
+                const float shared_pressure = (pressure + neighbour_pressure) / 2.0f;
+                const float near_shared_pressure = (near_pressure + near_neighbour_pressure) / 2.0f;
+                const float dist = glm::sqrt(square_dist);
+                const glm::vec3 dir = dist > 0.0f ? offset_to_neighbour / dist : glm::vec3(0.0f, 1.0f, 0.0f);
+                pressure_force += dir * DensityDerivative(dist, this->smoothing_radius) * shared_pressure / neighbour_density.far;
+                pressure_force += dir * NearDensityDerivative(dist, this->smoothing_radius) * near_shared_pressure / neighbour_density.near;
+            }
+            const glm::vec3 acceleration = pressure_force / density.far;
+            this->particle_velocities.at(i) += acceleration * dt;
+        }
+    }
+    void CalculateViscosity(float dt) {
+        const float square_radius = this->smoothing_radius * this->smoothing_radius;
+        for(size_t i = 0; i < this->particle_positions.size(); ++i) {
+            const glm::vec3& pos = this->predicted_positions.at(i);
+            const glm::vec3& velocity = this->particle_velocities.at(i);
+            glm::vec3 viscosity_force = {};
+            
+            for(size_t j = 0; j < this->particle_positions.size(); ++j) {
+                if(i == j) {
+                    continue;
+                }
+                const glm::vec3& neighbour_pos = this->predicted_positions.at(j);
+                const glm::vec3 offset_to_neighbour = neighbour_pos - pos;
+                const float square_dist = glm::dot(offset_to_neighbour, offset_to_neighbour);
+                if(square_dist > square_radius) {
+                    continue;
+                }
+                const float dist = glm::sqrt(square_dist);
+                const glm::vec3& neighbour_velocity = this->particle_velocities.at(j);
+                viscosity_force += (neighbour_velocity - velocity) * SmoothingKernelPoly6(dist, this->smoothing_radius);
+            }
+            this->particle_velocities.at(i) += viscosity_force * this->viscosity_strength * dt;
+        }
+    }
+
+
+    void FixedUpdate(float dt) {
+        if(this->particle_velocities.size() != this->particle_positions.size()) {
+            this->particle_velocities.resize(this->particle_positions.size(), glm::vec3(0.0f));
+        }
+        if(this->particle_densities.size() != this->particle_positions.size()) {
+            this->particle_densities.resize(this->particle_positions.size(), {0.0f, 0.0f});
+        }
+        if(this->predicted_positions.size() != this->particle_positions.size()) {
+            this->predicted_positions.resize(this->particle_positions.size(), glm::vec3(0.0f));
+        }
+
+        this->ExternalForces(dt);
+        this->CalculateDensities(dt);
+        this->CalculatePressureForce(dt);
+        this->CalculateViscosity(dt);
+
+        bool is_nan_once = false;
+        for(size_t i = 0; i < this->particle_positions.size(); ++i) {
+            glm::vec3& vel = this->particle_velocities.at(i);
+            const glm::vec3 delta_pos = vel * dt;
+
+            if(glm::isnan(vel.x) || glm::isnan(vel.y) || glm::isnan(vel.z)) {
+                is_nan_once = true;
+            }
+            glm::vec3 new_pos = this->particle_positions.at(i) + delta_pos;
+            if(new_pos.x < this->bb.min.x) {
+                vel.x = -vel.x * this->collision_damping;
+                new_pos.x = 2.0f * this->bb.min.x - new_pos.x;
+            }
+            if(new_pos.y < this->bb.min.y) {
+                vel.y = -vel.y * this->collision_damping;
+                new_pos.y = 2.0f * this->bb.min.y - new_pos.y;
+            }
+            if(new_pos.z < this->bb.min.z) {
+                vel.z = -vel.z * this->collision_damping;
+                new_pos.z = 2.0f * this->bb.min.z - new_pos.z;
+            }
+            if(new_pos.x > this->bb.max.x) {
+                vel.x = -vel.x * this->collision_damping;
+                new_pos.x = 2.0f * this->bb.max.x - new_pos.x;
+            }
+            if(new_pos.y > this->bb.max.y) {
+                vel.y = -vel.y * this->collision_damping;
+                new_pos.y = 2.0f * this->bb.max.y - new_pos.y;
+            }
+            if(new_pos.z > this->bb.max.z) {
+                vel.z = -vel.z * this->collision_damping;
+                new_pos.z = 2.0f * this->bb.max.z - new_pos.z;
+            }
+            this->particle_positions.at(i) = new_pos;
+        }
+        if(is_nan_once) {
+            std::cout << "is nan" << std::endl;
+        }
+    }
+    virtual void Update(float dt) override {
+        const float fixed_timestep = 1.0f / 60.0f;
+        static float timer = 0.0f;
+        timer += dt;
+        if(timer > fixed_timestep * 5.0f) {
+            timer = 0.0f;
+        }
+        while(timer > fixed_timestep) {
+            this->FixedUpdate(fixed_timestep);
+            timer -= fixed_timestep;
+        }
+    }
+    virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClearDepthf(1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        glDepthMask(GL_FALSE);
+        DrawHDR(hdr_map, proj_mat, view_mat);
+
+        std::vector<BasicShaderInstanced::InstanceData> instance_data(particle_positions.size());
+        for(size_t i = 0; i < particle_positions.size(); ++i) {
+            instance_data.at(i).pos = particle_positions.at(i);
+            const float len = glm::min(glm::length(this->particle_velocities.at(i)) / 10.0f, 1.0f);
+
+            const glm::vec4 blue_hsla = RgbaToHsla(glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+            const glm::vec4 red_hsla = RgbaToHsla(glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+            instance_data.at(i).col = HslaToRgba({glm::mix(blue_hsla.x, red_hsla.x, len), 1.0f, 0.5f, blue_hsla.w});
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, this->instance_buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(BasicShaderInstanced::InstanceData) * instance_data.size(), instance_data.data(), GL_STATIC_DRAW);
+
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+
+        instanced_shader.Bind();
+        instanced_shader.SetViewMatrix(view_mat);
+        instanced_shader.SetProjectionMatrix(proj_mat);
+        instanced_shader.SetModelMatrix(glm::mat4(1.0f));
+
+        instanced_shader.SetTexture(white_texture.id);
+        glBindVertexArray(this->base_mesh.vao);
+        glDrawElementsInstanced(GL_TRIANGLES, this->base_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr, instance_data.size());
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) override {
+    }
+
+    Mesh base_mesh;
+    GLuint instance_buffer;
+    BasicShaderInstanced instanced_shader;
+    std::vector<glm::vec3> particle_positions;
+    std::vector<glm::vec3> particle_velocities;
+    std::vector<glm::vec3> predicted_positions;
+    std::vector<Density> particle_densities;
+
+    glm::vec3 gravity = {0.0f, -9.0f, 0.0f};
+    float target_density = 400.0f;
+    float pressure_multiplier = 50.0f;
+    float near_pressure_multiplier = 7.0f;
+    float smoothing_radius = 0.2f;
+    float viscosity_strength = 0.05f;
+    float collision_damping = 0.95f;
+
+    glm::vec3 radius;
+    BoundingBox bb;
+};
 
 
 enum CurrentActiveScene {
@@ -788,8 +1099,9 @@ enum CurrentActiveScene {
     CS_DecimationScene,
     CS_VolumetricFog,
     CS_CascadedShadowMap,
+    CS_FluidSim,
 };
-static CurrentActiveScene active_scene = CS_CascadedShadowMap;
+static CurrentActiveScene active_scene = CS_FluidSim;
 Scene* scene = nullptr;
 
 static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -880,6 +1192,9 @@ int main(int argc, char** argv) {
     }
     else if(active_scene == CurrentActiveScene::CS_CascadedShadowMap) {
         scene = new CascadedShadowMap();
+    }
+    else if(active_scene == CurrentActiveScene::CS_FluidSim) {
+        scene = new FluidSimScene(15, 15, 15);
     }
     
     glEnable(GL_BLEND);

@@ -686,6 +686,109 @@ void GenerateCube(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const
     }
 }
 
+void GenerateSphere(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const glm::vec3& pos, const glm::vec3& size, const glm::vec4& col, uint32_t segments) {
+    verts.reserve(verts.size() + segments * segments);
+    inds.reserve(inds.size() + 6 * segments * segments);
+    const size_t vert_count = verts.size();
+    const float dtheta = static_cast<float>(M_PI) / static_cast<float>(segments);
+    const float dphi = dtheta * 2.0f;
+
+    for(uint32_t i = 0; i < segments; ++i) {
+        const float cur_phi = i * dphi;
+        for(uint32_t j = 0; j < segments; ++j) {
+            const float cur_theta = j * dtheta;
+
+            const glm::vec3 normal = {
+                sinf(cur_theta) * cosf(cur_phi),
+                sinf(cur_theta) * sinf(cur_phi),
+                cosf(cur_theta)
+            };
+            verts.push_back({ .pos = normal * size + pos, .nor = normal, .uv = {}, .col = col });
+
+            const uint32_t nj = (j + 1) % segments;
+            const uint32_t ni = (i + 1) % segments;
+
+            if(j < segments - 1) {
+                inds.push_back(i * segments + j + vert_count);
+                inds.push_back(ni * segments + nj + vert_count);
+                inds.push_back(ni * segments + j + vert_count);
+            }
+            if(j < segments - 1) {
+                inds.push_back(i * segments + j + vert_count);
+                inds.push_back(i * segments + nj + vert_count);
+                inds.push_back(ni * segments + nj + vert_count);
+            }
+        }
+    }
+}
+void GenerateIcoSphere(std::vector<Vertex>& verts, std::vector<uint32_t>& inds, const glm::vec3& pos, const glm::vec3& size, const glm::vec4& col, bool flat) {
+    static constexpr glm::vec3 precalc_positions[12] = {
+        glm::vec3 {  0.0000000e+00,  0.0000000e+00,  1.0000000e+00 },
+        glm::vec3 {  8.9442718e-01,  0.0000000e+00,  4.4721359e-01 },
+        glm::vec3 {  2.7639320e-01,  8.5065079e-01,  4.4721359e-01 },
+        glm::vec3 { -7.2360682e-01,  5.2573109e-01,  4.4721359e-01 },
+        glm::vec3 { -7.2360682e-01, -5.2573109e-01,  4.4721359e-01 },
+        glm::vec3 {  2.7639320e-01, -8.5065079e-01,  4.4721359e-01 },
+        glm::vec3 {  7.2360682e-01,  5.2573109e-01, -4.4721359e-01 },
+        glm::vec3 { -2.7639320e-01,  8.5065079e-01, -4.4721359e-01 },
+        glm::vec3 { -8.9442718e-01,  1.0953574e-16, -4.4721359e-01 },
+        glm::vec3 { -2.7639320e-01, -8.5065079e-01, -4.4721359e-01 },
+        glm::vec3 {  7.2360682e-01, -5.2573109e-01, -4.4721359e-01 },
+        glm::vec3 {  0.0000000e+00,  0.0000000e+00, -1.0000000e+00 }
+    };
+    static constexpr uint32_t precalc_indices[20 * 3] = {
+        0,  1,  2,
+        0,  2,  3,
+        0,  3,  4,
+        0,  4,  5,
+        0,  5,  1,
+        1,  6,  2,
+        2,  7,  3,
+        3,  8,  4,
+        4,  9,  5,
+        5, 10,  1,
+        2,  6,  7,
+        3,  7,  8,
+        4,  8,  9,
+        5,  9, 10,
+        1, 10,  6,
+        6, 11,  7,
+        7, 11,  8,
+        8, 11,  9,
+        9, 11, 10,
+        10, 11,  6
+    };
+
+    const uint32_t prev_vtx_count = verts.size();
+    if(flat) {
+        verts.reserve(ARRSIZE(precalc_indices));
+        inds.reserve(ARRSIZE(precalc_indices));
+
+        for(size_t i = 0; i < ARRSIZE(precalc_indices) / 3; ++i) {
+            const glm::vec3& p1 = precalc_positions[precalc_indices[i * 3 + 0]];
+            const glm::vec3& p2 = precalc_positions[precalc_indices[i * 3 + 1]];
+            const glm::vec3& p3 = precalc_positions[precalc_indices[i * 3 + 2]];
+            const glm::vec3 nor = glm::normalize(glm::cross(p2 - p1, p3 - p1));
+            
+            verts.push_back({.pos = p1 * size + pos, .nor = nor, .uv = {}, .col = col});
+            verts.push_back({.pos = p2 * size + pos, .nor = nor, .uv = {}, .col = col});
+            verts.push_back({.pos = p3 * size + pos, .nor = nor, .uv = {}, .col = col});
+            inds.push_back(i * 3 + 0 + prev_vtx_count);
+            inds.push_back(i * 3 + 1 + prev_vtx_count);
+            inds.push_back(i * 3 + 2 + prev_vtx_count);
+        }
+    }
+    else {
+        for(size_t i = 0; i < ARRSIZE(precalc_positions); ++i) {
+            const glm::vec3& p = precalc_positions[i];
+            verts.push_back({.pos = p * size + pos, .nor = p, .uv = {}, .col = col});
+        }
+        for(size_t i = 0; i < ARRSIZE(precalc_indices); ++i) {
+            inds.push_back(precalc_indices[i] + prev_vtx_count);
+        }
+    }
+}
+
 
 static void SetPixel(uint8_t *dest, int destWidth, int x, int y, const uint8_t *color)
 {
@@ -894,3 +997,55 @@ void SetExecutablePath(const char* path) {
 std::string TranslateRelativePath(const std::string& path) {
     return EXECUTABLE_PATH + path;
 }
+
+glm::vec4 RgbaToHsla(const glm::vec4& color) {
+    float r = color.r, g = color.g, b = color.b;
+    float maxVal = std::max({r, g, b});
+    float minVal = std::min({r, g, b});
+    float delta = maxVal - minVal;
+
+    float hue = 0.0f;
+    float saturation = 0.0f;
+    float lightness = (maxVal + minVal) / 2.0f;
+
+    if (delta > 0.0f) {
+        saturation = (lightness < 0.5f) ? (delta / (maxVal + minVal)) : (delta / (2.0f - maxVal - minVal));
+
+        if (maxVal == r) {
+            hue = (g - b) / delta + (g < b ? 6.0f : 0.0f);
+        } else if (maxVal == g) {
+            hue = (b - r) / delta + 2.0f;
+        } else {
+            hue = (r - g) / delta + 4.0f;
+        }
+        hue /= 6.0f;
+    }
+
+    return glm::vec4(hue, saturation, lightness, color.a);
+}
+glm::vec4 HslaToRgba(const glm::vec4& hsl) {
+    float h = hsl.x, s = hsl.y, l = hsl.z;
+
+    auto hueToRgb = [](float p, float q, float t) {
+        if (t < 0.0f) t += 1.0f;
+        if (t > 1.0f) t -= 1.0f;
+        if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+        if (t < 1.0f / 2.0f) return q;
+        if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+        return p;
+    };
+
+    float r, g, b;
+    if (s == 0.0f) {
+        r = g = b = l; // Achromatic
+    } else {
+        float q = (l < 0.5f) ? (l * (1.0f + s)) : (l + s - l * s);
+        float p = 2.0f * l - q;
+        r = hueToRgb(p, q, h + 1.0f / 3.0f);
+        g = hueToRgb(p, q, h);
+        b = hueToRgb(p, q, h - 1.0f / 3.0f);
+    }
+    return glm::vec4(r, g, b, hsl.a);
+}
+
+

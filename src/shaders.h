@@ -17,6 +17,26 @@ struct BasicShader {
     GLint view_loc;
     GLint proj_loc;
 };
+struct BasicShaderInstanced {
+    struct InstanceData {
+        glm::vec3 pos;
+        glm::vec4 col;
+    };
+    BasicShaderInstanced();
+    ~BasicShaderInstanced();
+    void Bind() const;
+    void SetModelMatrix(const glm::mat4& mat) const;
+    void SetViewMatrix(const glm::mat4& mat) const;
+    void SetProjectionMatrix(const glm::mat4& mat) const;
+
+    void SetTexture(GLuint id) const;
+
+    GLuint program;
+    GLint model_loc;
+    GLint view_loc;
+    GLint proj_loc;
+};
+
 
 struct IntersectionHightlightingShader {
     struct Data {
