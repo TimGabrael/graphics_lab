@@ -97,10 +97,12 @@ struct RaytraceCubeScene : public Scene {
         std::vector<std::future<void>> futures;
         for(size_t i = 0; i < this->lit_objects.size(); ++i) {
             futures.push_back(std::async(std::launch::async, [this, i]() {
-                        RayTraceMapper(this->lit_objects.at(i), this->ray_scene, 2, 1);
+                RayTraceMapper(this->lit_objects.at(i), this->ray_scene, 2, 1);
             }));
             this->post_processed_imgs.push_back(RayImage(this->lit_objects.at(i).lightmap.width, this->lit_objects.at(i).lightmap.height));
         }
+        //this->redraw = false;
+        //this->always_draw = false;
     }
     RaytraceCubeScene(RaytraceCubeScene&) = delete;
     RaytraceCubeScene(RaytraceCubeScene&&) = delete;
@@ -1091,6 +1093,134 @@ struct FluidSimScene : public Scene {
     glm::vec3 radius;
     BoundingBox bb;
 };
+struct LightShafts : public Scene {
+    LightShafts() : sponza(LoadGLTFLoadData(TranslateRelativePath("../../assets/sponza.glb").c_str())) {
+        this->occlusion_map = CreateRenderTexture(1024, 1024);
+    }
+    ~LightShafts() {
+    }
+    virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) {
+        BoundingBox full_bb = {
+            .min = {FLT_MAX, FLT_MAX, FLT_MAX},
+            .max = {-FLT_MAX, -FLT_MAX, -FLT_MAX},
+        };
+        const glm::vec3 sponza_scale = glm::vec3(0.01f);
+        for(uint32_t i = 0; i < sponza.meshes.size(); ++i) {
+            const BoundingBox& bb = sponza.meshes.at(i).mesh.bb;
+            full_bb.min = glm::min(bb.min * sponza_scale, full_bb.min);
+            full_bb.max = glm::max(bb.max * sponza_scale, full_bb.max);
+        }
+
+        glm::vec3 cam_pos = glm::vec3(glm::inverse(view_mat)[3]);
+
+        const glm::vec3 light_dir = glm::normalize(glm::vec3(0.0f, -4.0f, 1.0f));
+        constexpr float distance = 1000.0f;
+        const glm::vec3 light_pos = cam_pos + distance * -light_dir;
+        const glm::mat4 sponza_mat = glm::scale(glm::mat4(1.0f), sponza_scale);
+
+        // draw things that occlude the light source
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, occlusion_map.framebuffer_id);
+            glViewport(0, 0, occlusion_map.width, occlusion_map.height);
+            glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+            glClearDepthf(1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+            color_shader.Bind();
+            color_shader.SetViewProjMatrix(proj_mat * view_mat);
+            color_shader.SetColor(glm::vec4(0.0f));
+            
+            color_shader.SetModelMatrix(sponza_mat);
+            for(uint32_t i = 0; i < sponza.meshes.size(); ++i) {
+                const auto& mesh = sponza.meshes.at(i);
+                glBindVertexArray(mesh.mesh.vao);
+                glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+
+        glm::vec4 light_screen_pos = proj_mat * view_mat * glm::vec4(light_pos, 1.0f);
+        light_screen_pos /= light_screen_pos.w;
+        light_screen_pos = 0.5f * (light_screen_pos + glm::vec4(1.0f));
+
+
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClearDepthf(1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+
+        glDepthMask(GL_FALSE);
+        DrawHDR(hdr_map, proj_mat, view_mat);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+
+        basic_shader.Bind();
+        basic_shader.SetViewMatrix(view_mat);
+        basic_shader.SetProjectionMatrix(proj_mat);
+        basic_shader.SetModelMatrix(sponza_mat);
+        
+        for(uint32_t i = 0; i < sponza.meshes.size(); ++i) {
+            const auto& mesh = sponza.meshes.at(i);
+            basic_shader.SetTexture(sponza.textures.at(sponza.materials.at(mesh.material_idx).base_color.idx).id);
+            glBindVertexArray(mesh.mesh.vao);
+            glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+        }
+
+        light_ray_shader.Bind();
+        light_ray_shader.SetDensity(1.0f);
+        light_ray_shader.SetWeight(0.01f);
+        light_ray_shader.SetDecay(1.0f);
+        light_ray_shader.SetExposure(1.0f);
+        light_ray_shader.SetNumSamples(100);
+        light_ray_shader.SetLightScreenSpacePos(light_screen_pos);
+        light_ray_shader.SetOcclusionTexture(occlusion_map.colorbuffer_ids[0]);
+
+        static bool once = true;
+        static GLuint full_screen_vao = INVALID_GL_HANDLE;
+        static GLuint full_screen_vbo = INVALID_GL_HANDLE;
+        if(once) {
+            static glm::vec2 positions[] = {
+                {-1.0f,  1.0f},
+                {-1.0f, -1.0f},
+                { 1.0f, -1.0f},
+                {-1.0f,  1.0f},
+                { 1.0f, -1.0f},
+                { 1.0f,  1.0f},
+            };
+
+            glCreateVertexArrays(1, &full_screen_vao);
+            glBindVertexArray(full_screen_vao);
+            glGenBuffers(1, &full_screen_vbo);
+            glBindBuffer(GL_ARRAY_BUFFER, full_screen_vbo);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * ARRSIZE(positions), positions, GL_STATIC_DRAW);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
+            once = false;
+        }
+        // additive blending
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE);
+
+        glBindVertexArray(full_screen_vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_BLEND);
+    }
+    virtual void Update(float dt) {
+        
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) {
+    }
+
+    RenderTexture occlusion_map;
+    ColorShader color_shader;
+    LightRayShader light_ray_shader;
+    GLTFLoadData sponza;
+};
+
 
 
 enum CurrentActiveScene {
@@ -1100,8 +1230,9 @@ enum CurrentActiveScene {
     CS_VolumetricFog,
     CS_CascadedShadowMap,
     CS_FluidSim,
+    CS_LightShafts,
 };
-static CurrentActiveScene active_scene = CS_FluidSim;
+static CurrentActiveScene active_scene = CS_LightShafts;
 Scene* scene = nullptr;
 
 static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -1195,6 +1326,9 @@ int main(int argc, char** argv) {
     }
     else if(active_scene == CurrentActiveScene::CS_FluidSim) {
         scene = new FluidSimScene(15, 15, 15);
+    }
+    else if(active_scene == CurrentActiveScene::CS_LightShafts) {
+        scene = new LightShafts();
     }
     
     glEnable(GL_BLEND);

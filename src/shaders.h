@@ -153,3 +153,41 @@ struct DepthOnlyShader {
     GLuint model_loc;
     GLuint view_proj_loc;
 };
+struct ColorShader {
+    ColorShader();
+    ~ColorShader();
+
+    void Bind();
+    void SetViewProjMatrix(const glm::mat4& view_proj);
+    void SetModelMatrix(const glm::mat4& model);
+    void SetColor(const glm::vec4& col);
+
+    GLuint program;
+    GLuint model_loc;
+    GLuint view_proj_loc;
+    GLuint color_loc;
+};
+struct LightRayShader {
+    LightRayShader();
+    ~LightRayShader();
+
+    void Bind();
+    void SetDensity(float density);
+    void SetWeight(float weight);
+    void SetDecay(float decay);
+    void SetExposure(float exposure);
+    void SetNumSamples(uint32_t num_samples);
+    void SetLightScreenSpacePos(const glm::vec2& light_pos);
+    void SetOcclusionTexture(GLuint occlusion_texture);
+
+    
+    GLuint program;
+    GLuint density_loc;
+    GLuint weight_loc;
+    GLuint decay_loc;
+    GLuint exposure_loc;
+    GLuint num_samples_loc;
+    GLuint light_pos_loc;
+};
+
+

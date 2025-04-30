@@ -14,7 +14,7 @@ uniform sampler2D depth_map;
 #define NUM_OCTAVES 5
 #define LARGE_NUMBER 1e20
 #define MAX_SDF_SPHERE_STEPS 20
-#define MARCH_MULTIPLIER 0.1
+#define MARCH_MULTIPLIER 0.05
 #define ABSORPTION_CUTOFF 0.25
 
 layout(std140, binding = 0) uniform FogData {
@@ -37,7 +37,7 @@ float sd_sphere(vec3 sample_pos, vec3 center, float radius) {
     float distance = length(center - sample_pos) - radius;
     return distance;
 }
-float sdPlane( vec3 p ) {
+float sdPlane(vec3 p) {
 	return p.y;
 }
 

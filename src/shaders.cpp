@@ -282,3 +282,68 @@ void DepthOnlyShader::SetModelMatrix(const glm::mat4& model) const {
     glUniformMatrix4fv(this->model_loc, 1, GL_FALSE, (const GLfloat*)&model);
 }
 
+ColorShader::ColorShader() {
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/color_shader.vs").c_str(), TranslateRelativePath("../../assets/shaders/color_shader.fs").c_str());
+    glUseProgram(this->program);
+    this->view_proj_loc = glGetUniformLocation(this->program, "view_proj");
+    this->model_loc = glGetUniformLocation(this->program, "model");
+    // this doesn't work for whatever reason
+    this->color_loc = glGetUniformLocation(this->program, "basic_color");
+    if(this->color_loc == -1) {
+        std::cout << "color_loc is invalid" << std::endl;
+    }
+}
+ColorShader::~ColorShader() {
+    glDeleteProgram(this->program);
+}
+void ColorShader::Bind() {
+    glUseProgram(this->program);
+}
+void ColorShader::SetViewProjMatrix(const glm::mat4& view_proj) {
+    glUniformMatrix4fv(this->view_proj_loc, 1, GL_FALSE, (const GLfloat*)&view_proj);
+}
+void ColorShader::SetModelMatrix(const glm::mat4& model) {
+    glUniformMatrix4fv(this->model_loc, 1, GL_FALSE, (const GLfloat*)&model);
+}
+void ColorShader::SetColor(const glm::vec4& col) {
+    glUniform4fv(this->color_loc, 1, (const GLfloat*)&col);
+}
+
+LightRayShader::LightRayShader() {
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/lightray_shader.vs").c_str(), TranslateRelativePath("../../assets/shaders/lightray_shader.fs").c_str());
+    glUseProgram(this->program);
+    this->light_pos_loc = glGetUniformLocation(this->program, "uScreenSpaceSunPos");
+    this->density_loc = glGetUniformLocation(this->program, "uDensity");
+    this->weight_loc = glGetUniformLocation(this->program, "uWeight");
+    this->decay_loc = glGetUniformLocation(this->program, "uDecay");
+    this->exposure_loc = glGetUniformLocation(this->program, "uExposure");
+    this->num_samples_loc = glGetUniformLocation(this->program, "uNumSamples");
+}
+LightRayShader::~LightRayShader() {
+    glDeleteProgram(this->program);
+}
+void LightRayShader::Bind() {
+    glUseProgram(this->program);
+}
+void LightRayShader::SetDensity(float density) {
+    glUniform1fv(this->density_loc, 1, (const GLfloat*)&density);
+}
+void LightRayShader::SetWeight(float weight) {
+    glUniform1fv(this->weight_loc, 1, (const GLfloat*)&weight);
+}
+void LightRayShader::SetDecay(float decay) {
+    glUniform1fv(this->decay_loc, 1, (const GLfloat*)&decay);
+}
+void LightRayShader::SetExposure(float exposure) {
+    glUniform1fv(this->exposure_loc, 1, (const GLfloat*)&exposure);
+}
+void LightRayShader::SetNumSamples(uint32_t num_samples) {
+    glUniform1iv(this->num_samples_loc, 1, (const GLint*)&num_samples);
+}
+void LightRayShader::SetLightScreenSpacePos(const glm::vec2& light_pos) {
+    glUniform2fv(this->light_pos_loc, 1, (const GLfloat*)&light_pos);
+}
+void LightRayShader::SetOcclusionTexture(GLuint occlusion_texture) {
+    glBindTexture(GL_TEXTURE_2D, occlusion_texture);
+}
+

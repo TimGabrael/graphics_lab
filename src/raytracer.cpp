@@ -562,6 +562,7 @@ void RayTraceMapper(LitObject& lit, const RayScene& scene, uint32_t max_bounces,
             }
         }
     }
+
     for(size_t i = 0; i < accum_image.width * accum_image.height; ++i) {
         if(accum_image.colors[i].a <= 0.0f) {
             const uint32_t x = i % accum_image.width;
@@ -591,7 +592,7 @@ void RayTraceMapper(LitObject& lit, const RayScene& scene, uint32_t max_bounces,
     }
 
     
-    lit.lightmap.num_rendered_frames += 1;
+    lit.lightmap.num_rendered_frames += sample_count;
 }
 
 

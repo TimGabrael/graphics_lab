@@ -3,7 +3,6 @@ local function close_windows(name)
   -- Get a list of all windows
   local cmd = 'taskkill /IM ' .. name .. ' /F'
   local results = vim.fn.system(cmd)
-  print(results)
 end
 
 vim.keymap.set('n', '<F7>', 
