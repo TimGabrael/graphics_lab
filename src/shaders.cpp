@@ -349,15 +349,6 @@ void LightRayShader::SetOcclusionTexture(GLuint occlusion_texture) {
     glBindTexture(GL_TEXTURE_2D, occlusion_texture);
 }
 
-//layout(binding = 0) uniform sampler2D face_texture;  // 2D cubemap face
-//layout(binding = 1, std430) buffer SHBuffer {
-//    vec3 sh_coeffs[9]; // SH L2 (9 bands)
-//};
-//
-//uniform mat4 inv_view_proj; // Converts pixel (x,y) to direction
-//uniform int image_width;
-//uniform int image_height;
-
 SphericalHarmonicsComputeShader::SphericalHarmonicsComputeShader(){
     this->program = LoadComputeProgramFromFile(TranslateRelativePath("../../assets/shaders/spherical_harmonics.cs").c_str());
     this->tex_height_loc = glGetUniformLocation(this->program, "image_height");

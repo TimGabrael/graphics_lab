@@ -10,7 +10,7 @@ uniform sampler2D color_map;
 
 
 layout(std430, binding = 1) buffer SHBuffer {
-    vec4 sh_coeffs[9]; // SH L2 (9 bands)
+    vec4 sh_coeffs[9];
 };
 
 vec3 sampleSH(vec3 dir) {
