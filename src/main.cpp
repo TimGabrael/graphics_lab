@@ -674,69 +674,101 @@ struct CascadedShadowMap : public Scene {
         }
     }
     void CalculateLightProjections(const glm::mat4& proj, const glm::mat4& view) {
+        float cascade_splits[NUM_CASCADES] = {0.1f, 0.2f, 0.5f, 1.0f};
+
+        // the world_bb doesn't impact the screensize of the resulting cascade, only the z depth, it ensures that every object in the scene that should be
+        // in front of the light is in front of the light
+        const glm::vec3 world_bb_min = glm::vec3(-100.0f);
+        const glm::vec3 world_bb_max = glm::vec3( 100.0f);
         const glm::mat4 inv_cam = glm::inverse(proj * view);
-
-        float cascade_splits[NUM_CASCADES] = {};
-        const float near_clip = NEAR_PLANE;
-        const float far_clip = FAR_PLANE;
-        const float clip_range = far_clip - near_clip;
-        const float min_z = near_clip;
-        const float max_z = near_clip + clip_range;
-        const float range = max_z - min_z;
-        const float ratio = max_z / min_z;
         for(uint32_t i = 0; i < NUM_CASCADES; ++i) {
-            const float p = (i + 1) / static_cast<float>(NUM_CASCADES);
-            const float log = min_z * std::pow(ratio, p);
-            const float uniform = min_z + range * p;
-            const float d = split_lambda * (log - uniform) + uniform;
-            cascade_splits[i] = (d - near_clip) / clip_range;
-        }
-        float last_split_dist = 0.0f;
-        for(uint32_t i = 0; i < NUM_CASCADES; ++i) {
-            const float split_dist = cascade_splits[i];
-            glm::vec3 frustum_corners[8] = {
-                glm::vec3(-1.0f,  1.0f, 0.0f),
-                glm::vec3( 1.0f,  1.0f, 0.0f),
-                glm::vec3( 1.0f, -1.0f, 0.0f),
-                glm::vec3(-1.0f, -1.0f, 0.0f),
-                glm::vec3(-1.0f,  1.0f,  1.0f),
-                glm::vec3( 1.0f,  1.0f,  1.0f),
-                glm::vec3( 1.0f, -1.0f,  1.0f),
-                glm::vec3(-1.0f, -1.0f,  1.0f),
+            auto world_to_screen = [inv_cam](const glm::vec4& p) {
+                const glm::vec4 wp = inv_cam * p;
+                return glm::vec3(wp / wp.w);
             };
+            glm::vec3 frustum_positions[] = {
+                world_to_screen(glm::vec4(-1.0f, -1.0f, -1.0f, 1.0f)),
+                world_to_screen(glm::vec4(-1.0f, -1.0f,  1.0f, 1.0f)),
+                world_to_screen(glm::vec4(-1.0f,  1.0f, -1.0f, 1.0f)),
+                world_to_screen(glm::vec4(-1.0f,  1.0f,  1.0f, 1.0f)),
+                world_to_screen(glm::vec4( 1.0f, -1.0f, -1.0f, 1.0f)),
+                world_to_screen(glm::vec4( 1.0f, -1.0f,  1.0f, 1.0f)),
+                world_to_screen(glm::vec4( 1.0f,  1.0f, -1.0f, 1.0f)),
+                world_to_screen(glm::vec4( 1.0f,  1.0f,  1.0f, 1.0f)),
+            };
+            const float depth_percentage = cascade_splits[i];
+            for(size_t j = 0; j < ARRSIZE(frustum_positions); ++j) {
+                if((j % 2) == 0) {
+                    frustum_positions[j+1] = (frustum_positions[j+1] - frustum_positions[j]) * depth_percentage + frustum_positions[j];
+                }
+            }
+            const glm::vec3 bb_positions[] = {
+                glm::vec3(world_bb_min.x, world_bb_min.y, world_bb_min.z),
+                glm::vec3(world_bb_min.x, world_bb_min.y, world_bb_max.z),
+                glm::vec3(world_bb_min.x, world_bb_max.y, world_bb_min.z),
+                glm::vec3(world_bb_min.x, world_bb_max.y, world_bb_max.z),
+                glm::vec3(world_bb_max.x, world_bb_min.y, world_bb_min.z),
+                glm::vec3(world_bb_max.x, world_bb_min.y, world_bb_max.z),
+                glm::vec3(world_bb_max.x, world_bb_max.y, world_bb_min.z),
+                glm::vec3(world_bb_max.x, world_bb_max.y, world_bb_max.z),
+            };
+            glm::mat4 look_at = glm::lookAt(glm::vec3(0.0f), glm::vec3(light_dir), glm::vec3(0.0f, 1.0f, 0.0f));
+            const glm::vec4 lightspace_frustum[] = {
+                look_at * glm::vec4(frustum_positions[0], 1.0f),
+                look_at * glm::vec4(frustum_positions[1], 1.0f),
+                look_at * glm::vec4(frustum_positions[2], 1.0f),
+                look_at * glm::vec4(frustum_positions[3], 1.0f),
+                look_at * glm::vec4(frustum_positions[4], 1.0f),
+                look_at * glm::vec4(frustum_positions[5], 1.0f),
+                look_at * glm::vec4(frustum_positions[6], 1.0f),
+                look_at * glm::vec4(frustum_positions[7], 1.0f),
+            };
+            const glm::vec4 lightspace_bb_positions[] = {
+                look_at * glm::vec4(bb_positions[0], 1.0f),
+                look_at * glm::vec4(bb_positions[1], 1.0f),
+                look_at * glm::vec4(bb_positions[2], 1.0f),
+                look_at * glm::vec4(bb_positions[3], 1.0f),
+                look_at * glm::vec4(bb_positions[4], 1.0f),
+                look_at * glm::vec4(bb_positions[5], 1.0f),
+                look_at * glm::vec4(bb_positions[6], 1.0f),
+                look_at * glm::vec4(bb_positions[7], 1.0f),
+            };
+            BoundingBox light_bb;
+            light_bb.min = glm::vec3(FLT_MAX);
+            light_bb.max = glm::vec3(-FLT_MAX);
+            for(size_t j = 0; j < ARRSIZE(lightspace_frustum); ++j) {
+                const glm::vec3& frustum = glm::vec3(lightspace_frustum[j]);
+                light_bb.min = glm::min(frustum, light_bb.min);
+                light_bb.max = glm::max(frustum, light_bb.max);
+            }
+            for(size_t j = 0; j < ARRSIZE(lightspace_bb_positions); ++j) {
+                const glm::vec3& pos = glm::vec3(lightspace_bb_positions[j]);
+                light_bb.min.z = glm::min(pos.z, light_bb.min.z);
+                light_bb.max.z = glm::max(pos.z, light_bb.max.z);
+            }
+            const glm::vec3 center_lightspace = (light_bb.min + light_bb.max) * 0.5f;
+            const glm::mat4 inv_light_view = glm::inverse(look_at);
+            const glm::vec3 center_worldspace = glm::vec3(inv_light_view * glm::vec4(center_lightspace, 1.0f));
+            const glm::vec3 light_pos = center_worldspace - glm::vec3(light_dir);
+            look_at = glm::lookAt(light_pos, center_worldspace, glm::vec3(0.0f, 1.0f, 0.0f));
 
-            for(size_t j = 0; j < ARRSIZE(frustum_corners); ++j) {
-                const glm::vec4 inv_corner = inv_cam * glm::vec4(frustum_corners[j], 1.0f);
-                frustum_corners[j] = inv_corner / inv_corner.w;
-            }
-            for(uint32_t j = 0; j < 4; ++j) {
-                const glm::vec3 dist = frustum_corners[j + 4] - frustum_corners[j];
-                frustum_corners[j + 4] = frustum_corners[j] + (dist * split_dist);
-                frustum_corners[j] = frustum_corners[j] + (dist * last_split_dist);
-            }
-            glm::vec3 frustum_center = glm::vec3(0.0f);
-            for(uint32_t j = 0; j < 8; ++j) {
-                frustum_center += frustum_corners[j];
-            }
-            frustum_center /= 8.0f;
-            float radius = 0.0f;
-            for(uint32_t j = 0; j < 8; ++j) {
-                const float distance = glm::length(frustum_corners[j] - frustum_center);
-                radius = glm::max(radius, distance);
-            }
-            const glm::vec3 max_extents = glm::vec3(radius);
-            const glm::vec3 min_extents = -max_extents;
+            // move the calculated bounding box so it is at the origin of the lightspace
+            light_bb.min -= center_lightspace;
+            light_bb.max -= center_lightspace;
 
-            this->light_view[i] = glm::lookAt(frustum_center + light_dir * min_extents.z, frustum_center, glm::vec3(0.0f, 1.0f, 0.0f));
-            this->light_proj[i] = glm::ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, 0.0f, max_extents.z - min_extents.z);
+            // encapsulate the whole bounding box
+            const float depth = light_bb.max.z - light_bb.min.z;
+            light_bb.min.z -= depth;
+            glm::mat4 light_proj = glm::ortho(light_bb.min.x, light_bb.max.x, light_bb.min.y, light_bb.max.y, light_bb.min.z, light_bb.max.z);
+
+            this->light_view[i] = look_at;
+            this->light_proj[i] = light_proj;
 
             this->light_projections[i] = this->light_proj[i] * this->light_view[i];
 
             uint32_t x = i % 2;
             uint32_t y = i / 2;
             this->light_bounds[i] = glm::vec4(x * 0.5f, y * 0.5f, (x+1) * 0.5f, (y+1) * 0.5f);
-
-            last_split_dist = cascade_splits[i];
         }
     }
     virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) override {
@@ -1232,7 +1264,7 @@ enum CurrentActiveScene {
     CS_FluidSim,
     CS_LightShafts,
 };
-static CurrentActiveScene active_scene = CS_LightShafts;
+static CurrentActiveScene active_scene = CS_CascadedShadowMap;
 Scene* scene = nullptr;
 
 static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
