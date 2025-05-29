@@ -189,5 +189,46 @@ struct LightRayShader {
     GLuint num_samples_loc;
     GLuint light_pos_loc;
 };
+struct SphericalHarmonicsComputeShader {
+    struct SHBuffer {
+        glm::vec3 coeffs[9];
+    };
+
+    SphericalHarmonicsComputeShader();
+    ~SphericalHarmonicsComputeShader();
+
+    void Draw(uint32_t tex_width, uint32_t tex_height);
+    void Bind();
+    void SetTexture(GLuint tex, uint32_t width, uint32_t height);
+    void SetInvViewProj(const glm::mat4& mat);
+    void SetSHBuffer(GLuint buf);
+    
+
+    GLuint CreateSHBuffer();
+    void ClearSHBuffer(GLuint buf);
+    void DestroySHBuffer(GLuint buf);
+    GLuint program;
+    GLuint tex_loc;
+    GLuint tex_width_loc;
+    GLuint tex_height_loc;
+    GLuint mat_loc;
+};
+struct SphericalHarmonicsShader {
+    SphericalHarmonicsShader();
+    ~SphericalHarmonicsShader();
+
+    void Bind() const;
+    void SetModelMatrix(const glm::mat4& mat) const;
+    void SetViewMatrix(const glm::mat4& mat) const;
+    void SetProjectionMatrix(const glm::mat4& mat) const;
+    void SetSHBuffer(GLuint buf);
+
+    void SetTexture(GLuint id) const;
+
+    GLuint program;
+    GLint model_loc;
+    GLint view_loc;
+    GLint proj_loc;
+};
 
 

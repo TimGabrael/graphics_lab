@@ -1252,6 +1252,144 @@ struct LightShafts : public Scene {
     LightRayShader light_ray_shader;
     GLTFLoadData sponza;
 };
+struct SphericalHarmonics : public Scene {
+    SphericalHarmonics() : sponza(LoadGLTFLoadData(TranslateRelativePath("../../assets/sponza.glb").c_str())) {
+        const glm::vec3 sponza_scale = glm::vec3(0.01f);
+        this->sponza_mat = glm::scale(glm::mat4(1.0f), sponza_scale);
+
+        std::vector<Vertex> verts;
+        std::vector<uint32_t> inds;
+        GenerateIcoSphere(verts, inds, {}, glm::vec3(1.0f), {1.0f, 1.0f, 1.0f, 1.0f}, false);
+        this->sphere_mesh = CreateMesh(verts.data(), inds.data(), verts.size(), inds.size());
+        this->sh_buf = INVALID_GL_HANDLE;
+        this->sphere_pos = {0.0f, 4.0f, 0.0f};
+    }
+    ~SphericalHarmonics() {
+        sh_compute_shader.DestroySHBuffer(sh_buf);
+        sh_buf = INVALID_GL_HANDLE;
+    }
+    void DrawSpheres(const BasicShader& basic_shader, const glm::vec3& pos) {
+        constexpr uint32_t width_height = 256;
+        static RenderTexture rt = CreateRenderTexture(width_height, width_height);
+        glBindFramebuffer(GL_FRAMEBUFFER, rt.framebuffer_id);
+        glViewport(0, 0, width_height, width_height);
+        
+        if(this->sh_buf == INVALID_GL_HANDLE) {
+            this->sh_buf = sh_compute_shader.CreateSHBuffer();
+        }
+        else {
+            sh_compute_shader.ClearSHBuffer(this->sh_buf);
+        }
+
+        const glm::mat4 view_mats[] = {
+            glm::lookAt(pos, pos + glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+            glm::lookAt(pos, pos + glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+            glm::lookAt(pos, pos + glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
+            glm::lookAt(pos, pos + glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
+            glm::lookAt(pos, pos + glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+            glm::lookAt(pos, pos + glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+        };
+        for(size_t view_idx = 0; view_idx < ARRSIZE(view_mats); ++view_idx) {
+            if(view_idx != 0) {
+                continue;
+            }
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClearDepthf(1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            const glm::mat4 proj_mat = glm::perspective(glm::radians(90.0f), 1.0f, NEAR_PLANE, FAR_PLANE);
+
+            const glm::mat4 view_mat = view_mats[view_idx];
+            glDepthMask(GL_FALSE);
+            DrawHDR(hdr_map, proj_mat, view_mat);
+            glDepthMask(GL_TRUE);
+            glEnable(GL_DEPTH_TEST);
+
+            basic_shader.Bind();
+            basic_shader.SetViewMatrix(view_mat);
+            basic_shader.SetProjectionMatrix(proj_mat);
+            basic_shader.SetModelMatrix(this->sponza_mat);
+            
+            for(uint32_t i = 0; i < sponza.meshes.size(); ++i) {
+                const auto& mesh = sponza.meshes.at(i);
+                basic_shader.SetTexture(sponza.textures.at(sponza.materials.at(mesh.material_idx).base_color.idx).id);
+                glBindVertexArray(mesh.mesh.vao);
+                glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+            }
+            sh_compute_shader.Bind();
+            sh_compute_shader.SetTexture(rt.colorbuffer_ids[0], width_height, width_height);
+            const glm::mat4 inv_view_mat = glm::inverse(proj_mat * view_mat);
+            sh_compute_shader.SetInvViewProj(inv_view_mat);
+            sh_compute_shader.SetSHBuffer(sh_buf);
+            sh_compute_shader.Draw(width_height, width_height);
+        }
+
+    }
+    virtual void Draw(const glm::mat4& proj_mat, const glm::mat4& view_mat, const BasicShader& basic_shader, uint32_t width, uint32_t height) {
+        DrawSpheres(basic_shader, sphere_pos);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClearDepthf(1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+
+        glDepthMask(GL_FALSE);
+        DrawHDR(hdr_map, proj_mat, view_mat);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+
+        sh_render_shader.Bind();
+        sh_render_shader.SetViewMatrix(view_mat);
+        sh_render_shader.SetProjectionMatrix(proj_mat);
+        sh_render_shader.SetModelMatrix(this->sponza_mat);
+
+
+        // these are nice default values that produce a white fade that comes in from the top-right
+        //const glm::vec4 test_sh_values[9] = {
+        //    glm::vec4( 0.79f,  0.77f,  0.76f, 0.0f),
+        //    glm::vec4( 0.39f,  0.36f,  0.33f, 0.0f),
+        //    glm::vec4( 0.35f,  0.34f,  0.32f, 0.0f),
+        //    glm::vec4( 0.12f,  0.10f,  0.08f, 0.0f),
+        //    glm::vec4(-0.12f, -0.11f, -0.10f, 0.0f),
+        //    glm::vec4(-0.08f, -0.07f, -0.06f, 0.0f),
+        //    glm::vec4(-0.05f, -0.04f, -0.03f, 0.0f),
+        //    glm::vec4(-0.09f, -0.08f, -0.07f, 0.0f),
+        //    glm::vec4(-0.02f, -0.01f, -0.01f, 0.0f) 
+        //};
+        //glBindBuffer(GL_SHADER_STORAGE_BUFFER, sh_buf);
+        //glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4) * 9, test_sh_values);
+
+        sh_render_shader.SetSHBuffer(sh_buf);
+        for(uint32_t i = 0; i < sponza.meshes.size(); ++i) {
+            const auto& mesh = sponza.meshes.at(i);
+            sh_render_shader.SetTexture(sponza.textures.at(sponza.materials.at(mesh.material_idx).base_color.idx).id);
+            glBindVertexArray(mesh.mesh.vao);
+            glDrawElements(GL_TRIANGLES, mesh.mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr);
+        }
+
+        sh_render_shader.SetTexture(white_texture.id);
+        sh_render_shader.SetModelMatrix(glm::translate(glm::mat4(1.0f), sphere_pos));
+        glBindVertexArray(this->sphere_mesh.vao);
+        glDrawElementsInstanced(GL_TRIANGLES, this->sphere_mesh.triangle_count * 3, GL_UNSIGNED_INT, nullptr, 1);
+    }
+    virtual void Update(float dt) {
+        //static float angle = 0.0f;
+        //sphere_pos.x = std::cosf(angle);
+        //sphere_pos.z = std::sinf(angle);
+        //angle += dt;
+    }
+    virtual void KeyCallback(int key, int scancode, int action, int mods) {
+    }
+
+    GLTFLoadData sponza;
+    SphericalHarmonicsComputeShader sh_compute_shader;
+    SphericalHarmonicsShader sh_render_shader;
+    Mesh sphere_mesh;
+    glm::mat4 sponza_mat;
+    GLuint sh_buf = 0;
+    glm::vec3 sphere_pos = {};
+};
 
 
 
@@ -1263,8 +1401,9 @@ enum CurrentActiveScene {
     CS_CascadedShadowMap,
     CS_FluidSim,
     CS_LightShafts,
+    CS_SphericalHarmonics,
 };
-static CurrentActiveScene active_scene = CS_CascadedShadowMap;
+static CurrentActiveScene active_scene = CS_SphericalHarmonics;
 Scene* scene = nullptr;
 
 static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -1361,6 +1500,9 @@ int main(int argc, char** argv) {
     }
     else if(active_scene == CurrentActiveScene::CS_LightShafts) {
         scene = new LightShafts();
+    }
+    else if(active_scene == CurrentActiveScene::CS_SphericalHarmonics) {
+        scene = new SphericalHarmonics();
     }
     
     glEnable(GL_BLEND);

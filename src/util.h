@@ -147,6 +147,7 @@ void DestroyRenderTexture(RenderTexture* tex);
 
 GLuint LoadProgram(const char* vs, const char* fs);
 GLuint LoadProgramFromFile(const char* vs, const char* fs);
+GLuint LoadComputeProgramFromFile(const char* cs);
 
 void DrawHDR(const Texture2D& tex, const glm::mat4& proj_matrix, const glm::mat4& view_matrix);
 

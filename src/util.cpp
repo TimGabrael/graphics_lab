@@ -435,9 +435,11 @@ RenderTexture CreateRenderTexture(uint32_t width, uint32_t height) {
 
     glGenTextures(1, &tex.colorbuffer_ids[0]);
     glBindTexture(GL_TEXTURE_2D, tex.colorbuffer_ids[0]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA4, width, height, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_INT, nullptr);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glGenTextures(1, &tex.depthbuffer_id);
     glBindTexture(GL_TEXTURE_2D, tex.depthbuffer_id);
@@ -540,6 +542,32 @@ GLuint LoadProgram(const char* vs, const char* fs) {
 
     return program;
 }
+GLuint LoadProgram(const char* cs) {
+    GLuint cs_handle = CompileShader(GL_COMPUTE_SHADER, cs);
+    if(cs_handle == INVALID_GL_HANDLE) {
+        glDeleteShader(cs_handle);
+        return INVALID_GL_HANDLE;
+    }
+
+    GLuint program = glCreateProgram();
+    glAttachShader(program, cs_handle);
+    glLinkProgram(program);
+
+    GLint success;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        glDeleteShader(cs_handle);
+        GLint info_log_len;
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &info_log_len);
+        std::string infoLog(info_log_len, ' ');
+        glGetProgramInfoLog(program, info_log_len, &info_log_len, &infoLog[0]);
+        std::cerr << "Error linking shader program: " << infoLog << std::endl;
+        glDeleteProgram(program);
+        return 0;
+    }
+    glDeleteShader(cs_handle);
+    return program;
+}
 GLuint LoadProgramFromFile(const char* vs, const char* fs) {
     std::string vs_source = ReadShaderSource(vs);
     std::string fs_source = ReadShaderSource(fs);
@@ -547,6 +575,13 @@ GLuint LoadProgramFromFile(const char* vs, const char* fs) {
         return INVALID_GL_HANDLE;
     }
     return LoadProgram(vs_source.c_str(), fs_source.c_str());
+}
+GLuint LoadComputeProgramFromFile(const char* cs) {
+    const std::string cs_source = ReadShaderSource(cs);
+    if(cs_source == "") {
+        return INVALID_GL_HANDLE;
+    }
+    return LoadProgram(cs_source.c_str());
 }
 
 void DrawHDR(const Texture2D& tex, const glm::mat4& proj_matrix, const glm::mat4& view_matrix) {

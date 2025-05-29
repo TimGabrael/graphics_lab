@@ -1,5 +1,7 @@
 #include "shaders.h"
 #include <iostream>
+#include <chrono>
+#include <thread>
 
 BasicShader::BasicShader() {
     this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/basic.vs").c_str(), TranslateRelativePath("../../assets/shaders/basic.fs").c_str());
@@ -347,3 +349,90 @@ void LightRayShader::SetOcclusionTexture(GLuint occlusion_texture) {
     glBindTexture(GL_TEXTURE_2D, occlusion_texture);
 }
 
+//layout(binding = 0) uniform sampler2D face_texture;  // 2D cubemap face
+//layout(binding = 1, std430) buffer SHBuffer {
+//    vec3 sh_coeffs[9]; // SH L2 (9 bands)
+//};
+//
+//uniform mat4 inv_view_proj; // Converts pixel (x,y) to direction
+//uniform int image_width;
+//uniform int image_height;
+
+SphericalHarmonicsComputeShader::SphericalHarmonicsComputeShader(){
+    this->program = LoadComputeProgramFromFile(TranslateRelativePath("../../assets/shaders/spherical_harmonics.cs").c_str());
+    this->tex_height_loc = glGetUniformLocation(this->program, "image_height");
+    this->tex_width_loc = glGetUniformLocation(this->program, "image_width");
+    this->mat_loc = glGetUniformLocation(this->program, "inv_view_proj");
+
+    GLuint temp_tex_loc = glGetUniformLocation(this->program, "face_texture");
+    glUniform1i(temp_tex_loc, 0);
+    this->tex_loc = 0;
+}
+SphericalHarmonicsComputeShader::~SphericalHarmonicsComputeShader(){
+    glDeleteProgram(this->program);
+}
+void SphericalHarmonicsComputeShader::Draw(uint32_t tex_width, uint32_t tex_height) {
+    glDispatchCompute((tex_width+15)/16, (tex_height+15)/16, 1);
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
+}
+void SphericalHarmonicsComputeShader::Bind(){
+    glUseProgram(this->program);
+}
+void SphericalHarmonicsComputeShader::SetTexture(GLuint tex, uint32_t width, uint32_t height){
+    glUniform1i(this->tex_width_loc, width);
+    glUniform1i(this->tex_height_loc, height);
+    glActiveTexture(GL_TEXTURE0 + this->tex_loc);
+    glBindTexture(GL_TEXTURE_2D, tex);
+}
+void SphericalHarmonicsComputeShader::SetInvViewProj(const glm::mat4& mat){
+    glUniformMatrix4fv(this->mat_loc, 1, false, (const GLfloat*)&mat);
+}
+void SphericalHarmonicsComputeShader::SetSHBuffer(GLuint buf){
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buf);
+}
+GLuint SphericalHarmonicsComputeShader::CreateSHBuffer(){
+    GLuint buffer = 0;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * 9, nullptr, GL_STATIC_DRAW);
+    glm::vec4 zeroData[9] = {};
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4) * 9, zeroData);
+    return buffer;
+}
+void SphericalHarmonicsComputeShader::ClearSHBuffer(GLuint buf) {
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buf);
+    glm::vec4 zeroData[9] = {};
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4) * 9, zeroData);
+}
+void SphericalHarmonicsComputeShader::DestroySHBuffer(GLuint buf) {
+    glDeleteBuffers(1, &buf);
+}
+
+SphericalHarmonicsShader::SphericalHarmonicsShader(){
+    this->program = LoadProgramFromFile(TranslateRelativePath("../../assets/shaders/basic.vs").c_str(), TranslateRelativePath("../../assets/shaders/spherical_harmonics.fs").c_str());
+    this->model_loc = glGetUniformLocation(this->program, "model");
+    this->view_loc = glGetUniformLocation(this->program, "view");
+    this->proj_loc = glGetUniformLocation(this->program, "projection");
+}
+SphericalHarmonicsShader::~SphericalHarmonicsShader(){
+    glDeleteProgram(this->program);
+}
+void SphericalHarmonicsShader::Bind() const{
+    glUseProgram(this->program);
+}
+void SphericalHarmonicsShader::SetModelMatrix(const glm::mat4& mat) const{
+    glUniformMatrix4fv(this->model_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void SphericalHarmonicsShader::SetViewMatrix(const glm::mat4& mat) const{
+    glUniformMatrix4fv(this->view_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void SphericalHarmonicsShader::SetProjectionMatrix(const glm::mat4& mat) const{
+    glUniformMatrix4fv(this->proj_loc, 1, GL_FALSE, (const GLfloat*)&mat);
+}
+void SphericalHarmonicsShader::SetSHBuffer(GLuint buf){
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buf);
+}
+void SphericalHarmonicsShader::SetTexture(GLuint id) const{
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, id);
+}
