@@ -190,10 +190,6 @@ struct LightRayShader {
     GLuint light_pos_loc;
 };
 struct SphericalHarmonicsComputeShader {
-    struct SHBuffer {
-        glm::vec3 coeffs[9];
-    };
-
     SphericalHarmonicsComputeShader();
     ~SphericalHarmonicsComputeShader();
 

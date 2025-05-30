@@ -364,7 +364,7 @@ SphericalHarmonicsComputeShader::~SphericalHarmonicsComputeShader(){
 }
 void SphericalHarmonicsComputeShader::Draw(uint32_t tex_width, uint32_t tex_height) {
     glDispatchCompute((tex_width+15)/16, (tex_height+15)/16, 1);
-    glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 void SphericalHarmonicsComputeShader::Bind(){
     glUseProgram(this->program);

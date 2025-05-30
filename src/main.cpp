@@ -1290,9 +1290,6 @@ struct SphericalHarmonics : public Scene {
             glm::lookAt(pos, pos + glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
         };
         for(size_t view_idx = 0; view_idx < ARRSIZE(view_mats); ++view_idx) {
-            if(view_idx != 0) {
-                continue;
-            }
             glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             glClearDepthf(1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -1345,6 +1342,18 @@ struct SphericalHarmonics : public Scene {
         sh_render_shader.SetModelMatrix(this->sponza_mat);
 
 
+        // another set of test_values, these are a bit colorful
+        //const glm::vec4 test_sh_values[] = {
+        //    glm::vec4( 0.7953949,  0.4405923,  0.5459412, 0.0f),
+        //    glm::vec4( 0.3981450,  0.3526911,  0.6097158, 0.0f),
+        //    glm::vec4(-0.3424573, -0.1838151, -0.2715583, 0.0f),
+        //    glm::vec4(-0.2944621, -0.0560606,  0.0095193, 0.0f),
+        //    glm::vec4(-0.1123051, -0.0513088, -0.1232869, 0.0f),
+        //    glm::vec4(-0.2645007, -0.2257996, -0.4785847, 0.0f),
+        //    glm::vec4(-0.1569444, -0.0954703, -0.1485053, 0.0f),
+        //    glm::vec4( 0.5646247,  0.2161586,  0.1402643, 0.0f),
+        //    glm::vec4( 0.2137442, -0.0547578, -0.3061700, 0.0f)
+        //};
         // these are nice default values that produce a white fade that comes in from the top-right
         //const glm::vec4 test_sh_values[9] = {
         //    glm::vec4( 0.79f,  0.77f,  0.76f, 0.0f),
